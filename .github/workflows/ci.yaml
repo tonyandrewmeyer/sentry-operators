@@ -68,7 +68,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: charm-${{ hashFiles(format('{0}/charmcraft.yaml', matrix.charm)) }}-${{ strategy.job-index }}
-          path: ${{ steps.pack.outputs.charm }}
+          path: ${{ matrix.charm }}/*.charm
           if-no-files-found: error
 
   terraform-check:

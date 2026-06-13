@@ -90,8 +90,11 @@ def test_sasl_env_set_when_kafka_authenticated(ctx, monkeypatch):
 def test_publishes_url_to_requirer(ctx, monkeypatch):
     _wire_backends(monkeypatch)
     snuba_rel = testing.Relation("snuba")
-    exec_mock = testing.Exec(["snuba", "bootstrap", "--force"], return_code=0, stdout="")
-    container = testing.Container(CONTAINER, can_connect=True, execs={exec_mock})
+    execs = {
+        testing.Exec(["snuba", "bootstrap"], return_code=0, stdout=""),
+        testing.Exec(["snuba", "migrations", "migrate"], return_code=0, stdout=""),
+    }
+    container = testing.Container(CONTAINER, can_connect=True, execs=execs)
     state_in = testing.State(
         containers={container},
         relations={snuba_rel},

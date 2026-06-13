@@ -90,4 +90,6 @@ def test_build_environment_without_kafka_auth_has_no_sasl():
 
 
 def test_bootstrap_command():
-    assert sentry_snuba.bootstrap_command() == ["snuba", "bootstrap", "--force"]
+    # Bootstrap creates only Kafka topics; ClickHouse migrations are separate.
+    assert sentry_snuba.bootstrap_command() == ["snuba", "bootstrap", "--force", "--no-migrate"]
+    assert sentry_snuba.migrate_command() == ["snuba", "migrations", "migrate", "--force"]

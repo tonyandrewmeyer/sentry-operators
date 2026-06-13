@@ -66,9 +66,7 @@ class ClickHouseK8SCharm(ops.CharmBase):
         # routes to them; a k8s Service only forwards ports the charm opens, so
         # without this cross-charm connections (e.g. Snuba -> ClickHouse:9000)
         # never reach the workload.
-        self.unit.set_ports(
-            clickhouse.HTTP_PORT, clickhouse.NATIVE_PORT, clickhouse.METRICS_PORT
-        )
+        self.unit.set_ports(clickhouse.HTTP_PORT, clickhouse.NATIVE_PORT, clickhouse.METRICS_PORT)
         if not self.container.can_connect():
             return
         self._push_config()

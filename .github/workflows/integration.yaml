@@ -55,6 +55,6 @@ jobs:
       - name: Run integration tests
         run: tox -e integration
         working-directory: ${{ matrix.charm }}
-        env:
-          # The integration suite picks up the freshly packed charm here.
-          CHARM_PATH: ${{ steps.pack.outputs.charm }}
+        # The integration suite globs for the freshly packed *.charm in the
+        # working directory (see tests/integration/conftest.py), so no
+        # CHARM_PATH is needed.

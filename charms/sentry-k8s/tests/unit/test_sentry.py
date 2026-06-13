@@ -126,14 +126,15 @@ def test_symbolicator_config():
 
 
 def test_commands():
-    assert sentry.upgrade_command() == [
-        "sentry",
-        "upgrade",
-        "--noinput",
-        "--create-kafka-topics",
-    ]
+    # The migration runs database migrations only; topic creation is a separate
+    # step because Sentry's --create-kafka-topics does not actually create them.
+    assert sentry.upgrade_command() == ["sentry", "upgrade", "--noinput"]
+    topics = sentry.create_topics_command()
+    assert topics[0] == "python3" and topics[1] == "-c"
+    assert "create_topics" in topics[2]
     cmd = sentry.createuser_command(email="a@b.c", password="pw")
     assert "--superuser" in cmd
+    assert "--force-update" in cmd  # idempotent re-runs
     assert "a@b.c" in cmd
 
 

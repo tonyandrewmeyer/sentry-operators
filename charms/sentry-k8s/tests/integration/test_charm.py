@@ -27,13 +27,13 @@ def _resources():
 
 def test_deploy_full_stack(charm: pathlib.Path, juju: jubilant.Juju):
     """Deploy Sentry with its whole backing stack and reach active/idle."""
-    juju.deploy(charm.resolve(), app=APP, resources=_resources(), config={"feature-complete": False})
+    juju.deploy(
+        charm.resolve(), app=APP, resources=_resources(), config={"feature-complete": False}
+    )
 
     # Data backends (Canonical charms).
     juju.deploy(POSTGRES, channel="14/stable", trust=True)
-    juju.deploy(
-        KAFKA, channel="3/stable", config={"roles": "broker,controller"}, trust=True
-    )
+    juju.deploy(KAFKA, channel="3/stable", config={"roles": "broker,controller"}, trust=True)
     juju.deploy(REDIS, channel="latest/edge", trust=True)
     # Kafka must accept Sentry's large (50 MB) messages.
     juju.config(KAFKA, {"message-max-bytes": "52428800"})

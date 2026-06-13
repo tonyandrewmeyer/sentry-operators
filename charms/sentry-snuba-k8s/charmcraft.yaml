@@ -2,27 +2,95 @@
 # See https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/
 type: charm
 name: sentry-snuba-k8s
-title: Charm Template
-summary: A very short one-line summary of the charm.
+title: Snuba for Sentry
+summary: Snuba, the search and analytics service of self-hosted Sentry.
 description: |
-  A single sentence that says what the charm is, concisely and memorably.
+  Snuba is the service that powers search, graphs, issue grouping and alerting
+  in self-hosted Sentry by reading and writing event data in ClickHouse.
 
-  A paragraph of one to three short sentences, that describe what the charm does.
+  This charm runs Snuba's HTTP query API together with the fleet of Kafka
+  consumers and subscription executors that stream errors, outcomes,
+  transactions, metrics and profiles into ClickHouse. It bootstraps the Kafka
+  topics and ClickHouse schema, integrates with ClickHouse, Kafka and Redis, and
+  hands the Sentry charm the API URL.
 
-  A third paragraph that explains what need the charm meets.
+  It exists so the analytics tier of Sentry runs as its own scalable, observable
+  Juju application. It is useful to anyone running self-hosted Sentry on
+  Kubernetes with Juju.
 
-  Finally, a paragraph that describes whom the charm is useful for.
-
-# Documentation:
-# https://documentation.ubuntu.com/charmcraft/stable/howto/build-guides/select-platforms/
 base: ubuntu@24.04
 platforms:
   amd64:
-  arm64:
+
+links:
+  documentation: https://github.com/tonyandrewmeyer/sentry-operators/blob/main/docs/index.md
+  source: https://github.com/tonyandrewmeyer/sentry-operators
+  issues: https://github.com/tonyandrewmeyer/sentry-operators/issues
+  website: https://github.com/getsentry/snuba
+  contact: tony.meyer@gmail.com
 
 assumes:
   - juju >= 3.6
   - k8s-api
+
+containers:
+  snuba:
+    resource: snuba-image
+
+resources:
+  snuba-image:
+    type: oci-image
+    description: OCI image for Snuba, pinned to self-hosted Sentry 26.5.2.
+    upstream-source: ghcr.io/getsentry/snuba:26.5.2
+
+config:
+  options:
+    feature-complete:
+      description: |
+        Run the full set of Snuba consumers (transactions, metrics,
+        generic-metrics, profiling, replays, issue platform and the
+        events-analytics-platform) in addition to the always-on errors set.
+        Disable for an errors-only deployment with a smaller footprint.
+      default: true
+      type: boolean
+    event-retention-days:
+      description: |
+        How long event data is retained, in days. Must match the Sentry
+        application's retention so ClickHouse TTLs line up.
+      default: 90
+      type: int
+
+provides:
+  snuba:
+    interface: sentry_snuba
+    optional: false
+  metrics-endpoint:
+    interface: prometheus_scrape
+    optional: true
+  grafana-dashboard:
+    interface: grafana_dashboard
+    optional: true
+
+requires:
+  clickhouse:
+    interface: sentry_clickhouse
+    limit: 1
+    optional: false
+  kafka:
+    interface: kafka_client
+    limit: 1
+    optional: false
+  redis:
+    interface: redis
+    limit: 1
+    optional: false
+  logging:
+    interface: loki_push_api
+    optional: true
+
+peers:
+  snuba-peers:
+    interface: snuba_peers
 
 parts:
   charm:
@@ -30,42 +98,5 @@ parts:
     source: .
     build-snaps:
       - astral-uv
-
-# (Optional) Configuration options for the charm
-# This config section defines charm config options, and populates the Configure
-# tab on Charmhub.
-# More information on this section at:
-# https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/#config
-# General configuration documentation:
-# https://documentation.ubuntu.com/juju/3.6/reference/configuration/#application-configuration
-config:
-  options:
-    # An example config option to customise the log level of the workload
-    log-level:
-      description: |
-        Configures the log level of gunicorn.
-
-        Acceptable values are: "info", "debug", "warning", "error" and "critical"
-      default: "info"
-      type: string
-
-# Your workload's containers.
-# https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/#containers
-containers:
-  some-container:
-    resource: some-container-image
-
-# This field populates the Resources tab on Charmhub.
-# https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/#resources
-resources:
-  # An OCI image resource for each container listed above.
-  # You may remove this if your charm will run without a workload sidecar container.
-  some-container-image:
-    type: oci-image
-    description: OCI image for the 'some-container' container
-    # The upstream-source field is ignored by Charmcraft and Juju, but it can be
-    # useful to developers in identifying the source of the OCI image.  It is also
-    # used by the 'canonical/charming-actions' GitHub action for automated releases.
-    # The test_deploy function in tests/integration/test_charm.py reads upstream-source
-    # to determine which OCI image to use when running the charm's integration tests.
-    upstream-source: some-repo/some-image:some-tag
+    build-packages:
+      - git

@@ -1,35 +1,51 @@
-# Copyright 2026 Ubuntu
+# Copyright 2026 Tony Meyer
 # See LICENSE file for licensing details.
 #
 # The integration tests use the Jubilant library. See https://documentation.ubuntu.com/jubilant/
-# To learn more about testing, see https://documentation.ubuntu.com/ops/latest/explanation/testing/
 
 import logging
 import pathlib
 
 import jubilant
-import pytest
 import yaml
 
 logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(pathlib.Path("charmcraft.yaml").read_text())
+APP = "sentry-snuba-k8s"
+
+CLICKHOUSE = "clickhouse-k8s"
+KAFKA = "kafka-k8s"
+REDIS = "redis-k8s"
 
 
-def test_deploy(charm: pathlib.Path, juju: jubilant.Juju):
-    """Deploy the charm under test."""
-    resources = {
-        "some-container-image": METADATA["resources"]["some-container-image"]["upstream-source"]
-    }
-    juju.deploy(charm.resolve(), app="sentry-snuba-k8s", resources=resources)
-    juju.wait(jubilant.all_active)
+def test_deploy_and_integrate(charm: pathlib.Path, juju: jubilant.Juju):
+    """Deploy Snuba with its backends and confirm it reaches active/idle."""
+    resources = {"snuba-image": METADATA["resources"]["snuba-image"]["upstream-source"]}
+    juju.deploy(charm.resolve(), app=APP, resources=resources, config={"feature-complete": False})
+
+    # Backends. ClickHouse is this repo's charm; the rest are Canonical charms.
+    juju.deploy(CLICKHOUSE, channel="latest/edge")
+    juju.deploy(KAFKA, channel="3/stable", config={"roles": "broker,controller"}, trust=True)
+    juju.deploy(REDIS, channel="latest/edge", trust=True)
+
+    # Snuba is blocked until every backend is integrated.
+    juju.wait(lambda status: status.apps[APP].is_blocked, timeout=600)
+
+    juju.integrate(APP, CLICKHOUSE)
+    juju.integrate(APP, KAFKA)
+    juju.integrate(APP, REDIS)
+
+    juju.wait(jubilant.all_active, timeout=1800)
 
 
-# If you implement sentry_snuba.get_version in the charm source,
-# remove the @pytest.mark.skip line to enable this test.
-# Alternatively, remove this test if you don't need it.
-@pytest.mark.skip(reason="sentry_snuba.get_version is not implemented")
-def test_workload_version_is_set(charm: pathlib.Path, juju: jubilant.Juju):
-    """Check that the correct version of the workload is running."""
-    version = juju.status().apps["sentry-snuba-k8s"].version
-    assert version == "3.14"  # Replace 3.14 by the expected version of the workload.
+HEALTH_CHECK = (
+    "import urllib.request, sys; "
+    "sys.exit(0 if urllib.request.urlopen('http://localhost:1218/health').status == 200 else 1)"
+)
+
+
+def test_api_serves_health(juju: jubilant.Juju):
+    """Snuba's HTTP API answers its health check on port 1218."""
+    result = juju.exec(f"python3 -c {HEALTH_CHECK!r}", unit=f"{APP}/0")
+    assert result.return_code == 0

@@ -10,6 +10,7 @@ import logging
 import secrets
 
 import ops
+from charmlibs.interfaces.sentry_dsn import SentryDsnProvider
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires, KafkaRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
@@ -30,11 +31,17 @@ SYMBOLICATOR_CONTAINER = "symbolicator"
 DATABASE_RELATION = "database"
 KAFKA_RELATION = "kafka"
 REDIS_RELATION = "redis"
+RELAY_RELATION = "sentry-relay"
+DSN_RELATION = "sentry-dsn"
 PEER_RELATION = "sentry-peers"
 
 DATABASE_NAME = "sentry"
 KAFKA_TOPIC = "sentry"
 SECRET_LABEL = "sentry-secret-key"
+# The Relay charm's workload port; events in a published DSN are sent here.
+RELAY_PORT = 3000
+# The shared Sentry organization that DSN-integrated apps' projects live under.
+DSN_ORGANIZATION = "sentry"
 
 
 @trace_charm(tracing_endpoint="_charm_tracing_endpoint")
@@ -65,7 +72,8 @@ class SentryK8SCharm(ops.CharmBase):
             self, relation_name=KAFKA_RELATION, topic=KAFKA_TOPIC, extra_user_roles="admin"
         )
         self.snuba = SnubaRequirer(self)
-        self.relay = SentryRelayProvider(self, relation_name="sentry-relay")
+        self.relay = SentryRelayProvider(self, relation_name=RELAY_RELATION)
+        self.sentry_dsn = SentryDsnProvider(self, relation_name=DSN_RELATION)
         self.ingress = IngressPerAppRequirer(self, port=sentry.WEB_PORT, strip_prefix=True)
 
         for event in (
@@ -92,6 +100,7 @@ class SentryK8SCharm(ops.CharmBase):
             framework.observe(event, self._reconcile)
         framework.observe(self.on.collect_unit_status, self._on_collect_status)
         framework.observe(self.on.create_admin_action, self._on_create_admin)
+        framework.observe(self.sentry_dsn.on.dsn_requested, self._on_dsn_requested)
 
     # -- relation data --------------------------------------------------------
 
@@ -407,6 +416,65 @@ class SentryK8SCharm(ops.CharmBase):
             {"email": email, "password": password}, label=f"sentry-admin-{email}"
         )
         event.set_results({"email": email, "password-secret": secret.id})
+
+    # -- sentry-dsn integration -----------------------------------------------
+
+    def _relay_host(self) -> str | None:
+        """Return the in-cluster host events are ingested at (the related Relay)."""
+        relation = self.model.get_relation(RELAY_RELATION)
+        if relation is None or relation.app is None:
+            return None
+        return f"{relation.app.name}.{self.model.name}.svc.cluster.local"
+
+    def _on_dsn_requested(self, event: ops.RelationEvent) -> None:
+        """Provision a project/key for a related app and publish its DSN."""
+        if not self.unit.is_leader() or not self.sentry_container.can_connect():
+            return
+        # A DSN is only useful once Sentry is bootstrapped and a Relay (the event
+        # ingest endpoint) is related; otherwise wait for a later event.
+        snuba_url = self.snuba.url
+        secret_key = self._secret_key()
+        relay_host = self._relay_host()
+        if not (snuba_url and secret_key and relay_host):
+            return
+        project = self.sentry_dsn.requested_project(event.relation)
+        if not project:
+            return
+        platform = self.sentry_dsn.requested_platform(event.relation)
+        environment = self.sentry_dsn.requested_environment(event.relation) or self.model.name
+
+        env = sentry.sentry_environment(
+            snuba_url=snuba_url,
+            secret_key=secret_key,
+            event_retention_days=int(self.config["event-retention-days"]),  # type: ignore[arg-type]
+        )
+        env["SENTRY_DSN_ORG"] = DSN_ORGANIZATION
+        env["SENTRY_DSN_PROJECT"] = project
+        if platform:
+            env["SENTRY_DSN_PLATFORM"] = platform
+        try:
+            output, _ = self.sentry_container.exec(
+                sentry.provision_project_command(), environment=env, timeout=120
+            ).wait_output()
+        except ops.pebble.ExecError as exc:
+            logger.warning("Failed to provision Sentry project %r: %s", project, exc)
+            return
+        parsed = dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
+        public_key = parsed.get("PUBLIC_KEY")
+        project_id = parsed.get("PROJECT_ID")
+        if not (public_key and project_id):
+            logger.warning("Project provisioning returned no DSN for %r", project)
+            return
+        ingest_url = f"http://{relay_host}:{RELAY_PORT}"
+        dsn = f"http://{public_key}@{relay_host}:{RELAY_PORT}/{project_id}"
+        self.sentry_dsn.publish_dsn(
+            event.relation,
+            dsn=dsn,
+            public_key=public_key,
+            project_id=project_id,
+            ingest_url=ingest_url,
+            environment=environment,
+        )
 
     # -- tracing --------------------------------------------------------------
 

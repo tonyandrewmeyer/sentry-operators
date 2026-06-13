@@ -498,3 +498,58 @@ def createuser_command(*, email: str, password: str, superuser: bool = True) -> 
     if superuser:
         cmd.append("--superuser")
     return cmd
+
+
+# Provisions (idempotently) the organization, team, project and key a related
+# application needs, and prints the public key + project id so the charm can
+# build a DSN. Any superusers are added to the organization so the projects are
+# visible in the UI. Inputs come from the environment to avoid shell quoting.
+_PROVISION_PROJECT_SCRIPT = """
+import os
+from sentry.runner import configure
+configure()
+from sentry.models.organization import Organization
+from sentry.models.team import Team
+from sentry.models.project import Project
+from sentry.models.projectkey import ProjectKey
+from sentry.models.organizationmember import OrganizationMember
+try:
+    from sentry.users.models.user import User
+except Exception:  # noqa: BLE001 -- older import path
+    from sentry.models import User
+
+org_slug = os.environ["SENTRY_DSN_ORG"]
+project_slug = os.environ["SENTRY_DSN_PROJECT"]
+platform = os.environ.get("SENTRY_DSN_PLATFORM") or None
+
+org, _ = Organization.objects.get_or_create(slug=org_slug, defaults={"name": org_slug})
+team, _ = Team.objects.get_or_create(
+    organization=org, slug=org_slug, defaults={"name": org_slug}
+)
+project, _ = Project.objects.get_or_create(
+    organization=org, slug=project_slug, defaults={"name": project_slug, "platform": platform}
+)
+try:
+    project.add_team(team)
+except Exception:  # noqa: BLE001 -- already a member
+    pass
+for user in User.objects.filter(is_superuser=True):
+    OrganizationMember.objects.get_or_create(
+        organization=org, user_id=user.id, defaults={"role": "owner"}
+    )
+key = ProjectKey.objects.filter(project=project).first() or ProjectKey.objects.create(
+    project=project
+)
+print("PUBLIC_KEY=" + key.public_key)
+print("PROJECT_ID=" + str(project.id))
+"""
+
+
+def provision_project_command() -> list[str]:
+    """Create (idempotently) a Sentry project + key and print its DSN parts.
+
+    Reads ``SENTRY_DSN_ORG`` / ``SENTRY_DSN_PROJECT`` / ``SENTRY_DSN_PLATFORM``
+    from the environment and prints ``PUBLIC_KEY=...`` and ``PROJECT_ID=...`` on
+    stdout for the charm to parse.
+    """
+    return ["python3", "-c", _PROVISION_PROJECT_SCRIPT]

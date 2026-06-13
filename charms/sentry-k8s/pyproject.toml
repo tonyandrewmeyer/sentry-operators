@@ -20,7 +20,13 @@ dependencies = [
     # and grafana_dashboard need cosl, charm_tracing needs the OTLP exporter.
     "cosl>=0.0.53",
     "opentelemetry-exporter-otlp-proto-http==1.21.0",
+    # The sentry_dsn interface library (bundled at ./library, a charmlibs
+    # package), so consuming charms can integrate and receive a Sentry DSN.
+    "charmlibs-interfaces-sentry-dsn",
 ]
+
+[tool.uv.sources]
+"charmlibs-interfaces-sentry-dsn" = { path = "library", editable = true }
 
 [dependency-groups]
 # Dependencies of linting and static type checks

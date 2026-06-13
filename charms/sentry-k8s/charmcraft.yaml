@@ -143,6 +143,9 @@ provides:
   sentry-relay:
     interface: sentry_relay
     optional: true
+  sentry-dsn:
+    interface: sentry_dsn
+    optional: true
   metrics-endpoint:
     interface: prometheus_scrape
     optional: true

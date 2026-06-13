@@ -34,6 +34,22 @@ wheels = [
 ]
 
 [[package]]
+name = "charmlibs-interfaces-sentry-dsn"
+source = { editable = "library" }
+dependencies = [
+    { name = "ops" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "ops", specifier = ">=2.17,<4" }]
+
+[package.metadata.requires-dev]
+unit = [
+    { name = "ops", extras = ["testing"] },
+    { name = "pytest" },
+]
+
+[[package]]
 name = "charset-normalizer"
 version = "3.4.7"
 source = { registry = "https://pypi.org/simple" }
@@ -734,6 +750,7 @@ name = "sentry-k8s"
 version = "0.0.1"
 source = { virtual = "." }
 dependencies = [
+    { name = "charmlibs-interfaces-sentry-dsn" },
     { name = "cosl" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "ops" },
@@ -759,6 +776,7 @@ unit = [
 
 [package.metadata]
 requires-dist = [
+    { name = "charmlibs-interfaces-sentry-dsn", editable = "library" },
     { name = "cosl", specifier = ">=0.0.53" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = "==1.21.0" },
     { name = "ops", specifier = "~=3.7" },

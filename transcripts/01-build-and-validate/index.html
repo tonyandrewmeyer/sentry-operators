@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code transcript - Index</title>
+    <style>
+:root { --bg-color: #f5f5f5; --card-bg: #ffffff; --user-bg: #e3f2fd; --user-border: #1976d2; --assistant-bg: #f5f5f5; --assistant-border: #9e9e9e; --thinking-bg: #fff8e1; --thinking-border: #ffc107; --thinking-text: #666; --tool-bg: #f3e5f5; --tool-border: #9c27b0; --tool-result-bg: #e8f5e9; --tool-error-bg: #ffebee; --text-color: #212121; --text-muted: #757575; --code-bg: #263238; --code-text: #aed581; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 16px; line-height: 1.6; }
+.container { max-width: 800px; margin: 0 auto; }
+h1 { font-size: 1.5rem; margin-bottom: 24px; padding-bottom: 8px; border-bottom: 2px solid var(--user-border); }
+.header-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 2px solid var(--user-border); padding-bottom: 8px; margin-bottom: 24px; }
+.header-row h1 { border-bottom: none; padding-bottom: 0; margin-bottom: 0; flex: 1; min-width: 200px; }
+.message { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.message.user { background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.message.assistant { background: var(--card-bg); border-left: 4px solid var(--assistant-border); }
+.message.tool-reply { background: #fff8e1; border-left: 4px solid #ff9800; }
+.tool-reply .role-label { color: #e65100; }
+.tool-reply .tool-result { background: transparent; padding: 0; margin: 0; }
+.tool-reply .tool-result .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff8e1); }
+.message-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.03); font-size: 0.85rem; }
+.role-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.user .role-label { color: var(--user-border); }
+time { color: var(--text-muted); font-size: 0.8rem; }
+.timestamp-link { color: inherit; text-decoration: none; }
+.timestamp-link:hover { text-decoration: underline; }
+.message:target { animation: highlight 2s ease-out; }
+@keyframes highlight { 0% { background-color: rgba(25, 118, 210, 0.2); } 100% { background-color: transparent; } }
+.message-content { padding: 16px; }
+.message-content p { margin: 0 0 12px 0; }
+.message-content p:last-child { margin-bottom: 0; }
+.thinking { background: var(--thinking-bg); border: 1px solid var(--thinking-border); border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 0.9rem; color: var(--thinking-text); }
+.thinking-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #f57c00; margin-bottom: 8px; }
+.thinking p { margin: 8px 0; }
+.assistant-text { margin: 8px 0; }
+.tool-use { background: var(--tool-bg); border: 1px solid var(--tool-border); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.tool-header { font-weight: 600; color: var(--tool-border); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.tool-icon { font-size: 1.1rem; }
+.tool-description { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px; font-style: italic; }
+.tool-result { background: var(--tool-result-bg); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.tool-result.tool-error { background: var(--tool-error-bg); }
+.file-tool { border-radius: 8px; padding: 12px; margin: 12px 0; }
+.write-tool { background: linear-gradient(135deg, #e3f2fd 0%, #e8f5e9 100%); border: 1px solid #4caf50; }
+.edit-tool { background: linear-gradient(135deg, #fff3e0 0%, #fce4ec 100%); border: 1px solid #ff9800; }
+.file-tool-header { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.write-header { color: #2e7d32; }
+.edit-header { color: #e65100; }
+.file-tool-icon { font-size: 1rem; }
+.file-tool-path { font-family: monospace; background: rgba(0,0,0,0.08); padding: 2px 8px; border-radius: 4px; }
+.file-tool-fullpath { font-family: monospace; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; word-break: break-all; }
+.file-content { margin: 0; }
+.edit-section { display: flex; margin: 4px 0; border-radius: 4px; overflow: hidden; }
+.edit-label { padding: 8px 12px; font-weight: bold; font-family: monospace; display: flex; align-items: flex-start; }
+.edit-old { background: #fce4ec; }
+.edit-old .edit-label { color: #b71c1c; background: #f8bbd9; }
+.edit-old .edit-content { color: #880e4f; }
+.edit-new { background: #e8f5e9; }
+.edit-new .edit-label { color: #1b5e20; background: #a5d6a7; }
+.edit-new .edit-content { color: #1b5e20; }
+.edit-content { margin: 0; flex: 1; background: transparent; font-size: 0.85rem; }
+.edit-replace-all { font-size: 0.75rem; font-weight: normal; color: var(--text-muted); }
+.write-tool .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #e6f4ea); }
+.edit-tool .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff0e5); }
+.todo-list { background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%); border: 1px solid #81c784; border-radius: 8px; padding: 12px; margin: 12px 0; }
+.todo-header { font-weight: 600; color: #2e7d32; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.todo-items { list-style: none; margin: 0; padding: 0; }
+.todo-item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 0.9rem; }
+.todo-item:last-child { border-bottom: none; }
+.todo-icon { flex-shrink: 0; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 50%; }
+.todo-completed .todo-icon { color: #2e7d32; background: rgba(46, 125, 50, 0.15); }
+.todo-completed .todo-content { color: #558b2f; text-decoration: line-through; }
+.todo-in-progress .todo-icon { color: #f57c00; background: rgba(245, 124, 0, 0.15); }
+.todo-in-progress .todo-content { color: #e65100; font-weight: 500; }
+.todo-pending .todo-icon { color: #757575; background: rgba(0,0,0,0.05); }
+.todo-pending .todo-content { color: #616161; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 8px 0; white-space: pre-wrap; word-wrap: break-word; }
+pre.json { color: #e0e0e0; }
+code { background: rgba(0,0,0,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+pre code { background: none; padding: 0; }
+.user-content { margin: 0; }
+.truncatable { position: relative; }
+.truncatable.truncated .truncatable-content { max-height: 200px; overflow: hidden; }
+.truncatable.truncated::after { content: ''; position: absolute; bottom: 32px; left: 0; right: 0; height: 60px; background: linear-gradient(to bottom, transparent, var(--card-bg)); pointer-events: none; }
+.message.user .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--user-bg)); }
+.message.tool-reply .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, #fff8e1); }
+.tool-use .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--tool-bg)); }
+.tool-result .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--tool-result-bg)); }
+.expand-btn { display: none; width: 100%; padding: 8px 16px; margin-top: 4px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); }
+.expand-btn:hover { background: rgba(0,0,0,0.1); }
+.truncatable.truncated .expand-btn, .truncatable.expanded .expand-btn { display: block; }
+.pagination { display: flex; justify-content: center; gap: 8px; margin: 24px 0; flex-wrap: wrap; }
+.pagination a, .pagination span { padding: 5px 10px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; }
+.pagination a { background: var(--card-bg); color: var(--user-border); border: 1px solid var(--user-border); }
+.pagination a:hover { background: var(--user-bg); }
+.pagination .current { background: var(--user-border); color: white; }
+.pagination .disabled { color: var(--text-muted); border: 1px solid #ddd; }
+.pagination .index-link { background: var(--user-border); color: white; }
+details.continuation { margin-bottom: 16px; }
+details.continuation summary { cursor: pointer; padding: 12px 16px; background: var(--user-bg); border-left: 4px solid var(--user-border); border-radius: 12px; font-weight: 500; color: var(--text-muted); }
+details.continuation summary:hover { background: rgba(25, 118, 210, 0.15); }
+details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom: 0; }
+.index-item { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: var(--user-bg); border-left: 4px solid var(--user-border); }
+.index-item a { display: block; text-decoration: none; color: inherit; }
+.index-item a:hover { background: rgba(25, 118, 210, 0.1); }
+.index-item-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: rgba(0,0,0,0.03); font-size: 0.85rem; }
+.index-item-number { font-weight: 600; color: var(--user-border); }
+.index-item-content { padding: 16px; }
+.index-item-stats { padding: 8px 16px 12px 32px; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid rgba(0,0,0,0.06); }
+.index-item-commit { margin-top: 6px; padding: 4px 8px; background: #fff3e0; border-radius: 4px; font-size: 0.85rem; color: #e65100; }
+.index-item-commit code { background: rgba(0,0,0,0.08); padding: 1px 4px; border-radius: 3px; font-size: 0.8rem; margin-right: 6px; }
+.commit-card { margin: 8px 0; padding: 10px 14px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 6px; }
+.commit-card a { text-decoration: none; color: #5d4037; display: block; }
+.commit-card a:hover { color: #e65100; }
+.commit-card-hash { font-family: monospace; color: #e65100; font-weight: 600; margin-right: 8px; }
+.index-commit { margin-bottom: 12px; padding: 10px 16px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.index-commit a { display: block; text-decoration: none; color: inherit; }
+.index-commit a:hover { background: rgba(255, 152, 0, 0.1); margin: -10px -16px; padding: 10px 16px; border-radius: 8px; }
+.index-commit-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 4px; }
+.index-commit-hash { font-family: monospace; color: #e65100; font-weight: 600; }
+.index-commit-msg { color: #5d4037; }
+.index-item-long-text { margin-top: 8px; padding: 12px; background: var(--card-bg); border-radius: 8px; border-left: 3px solid var(--assistant-border); }
+.index-item-long-text .truncatable.truncated::after { background: linear-gradient(to bottom, transparent, var(--card-bg)); }
+.index-item-long-text-content { color: var(--text-color); }
+#search-box { display: none; align-items: center; gap: 8px; }
+#search-box input { padding: 6px 12px; border: 1px solid var(--assistant-border); border-radius: 6px; font-size: 16px; width: 180px; }
+#search-box button, #modal-search-btn, #modal-close-btn { background: var(--user-border); color: white; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+#search-box button:hover, #modal-search-btn:hover { background: #1565c0; }
+#modal-close-btn { background: var(--text-muted); margin-left: 8px; }
+#modal-close-btn:hover { background: #616161; }
+#search-modal[open] { border: none; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.2); padding: 0; width: 90vw; max-width: 900px; height: 80vh; max-height: 80vh; display: flex; flex-direction: column; }
+#search-modal::backdrop { background: rgba(0,0,0,0.5); }
+.search-modal-header { display: flex; align-items: center; gap: 8px; padding: 16px; border-bottom: 1px solid var(--assistant-border); background: var(--bg-color); border-radius: 12px 12px 0 0; }
+.search-modal-header input { flex: 1; padding: 8px 12px; border: 1px solid var(--assistant-border); border-radius: 6px; font-size: 16px; }
+#search-status { padding: 8px 16px; font-size: 0.85rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
+#search-results { flex: 1; overflow-y: auto; padding: 16px; }
+.search-result { margin-bottom: 16px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.search-result a { display: block; text-decoration: none; color: inherit; }
+.search-result a:hover { background: rgba(25, 118, 210, 0.05); }
+.search-result-page { padding: 6px 12px; background: rgba(0,0,0,0.03); font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
+.search-result-content { padding: 12px; }
+.search-result mark { background: #fff59d; padding: 1px 2px; border-radius: 2px; }
+@media (max-width: 600px) { body { padding: 8px; } .message, .index-item { border-radius: 8px; } .message-content, .index-item-content { padding: 12px; } pre { font-size: 0.8rem; padding: 8px; } #search-box input { width: 120px; } #search-modal[open] { width: 95vw; height: 90vh; } }
+</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-row">
+            <h1>Claude Code transcript</h1>
+            <div id="search-box">
+                <input type="text" id="search-input" placeholder="Search..." aria-label="Search transcripts">
+                <button id="search-btn" type="button" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+                </button>
+            </div>
+        </div>
+        
+
+<div class="pagination">
+<span class="current">Index</span>
+<span class="disabled">&larr; Prev</span>
+<a href="page-001.html">1</a>
+<a href="page-001.html">Next &rarr;</a>
+</div>
+
+        <p style="color: var(--text-muted); margin-bottom: 24px;">3 prompts · 766 messages · 251 tool calls · 0 commits · 1 pages</p>
+        
+<div class="index-item"><a href="page-001.html#msg-2026-06-13T12-37-26-153Z"><div class="index-item-header"><span class="index-item-number">#1</span><time datetime="2026-06-13T12:37:26.153Z" data-timestamp="2026-06-13T12:37:26.153Z">2026-06-13T12:37:26.153Z</time></div><div class="index-item-content"><p>you are in a sandboxed vm, so use it how you like. juju has been bootstrapped for you. gh is installed, scoped so you have write access to tonyandrewmeyer/sentry-operator (currently empty, you should add it as a remote and push content to it, and rememebr to commit as you go). your task is to write a juju charm for sentry, the performance management and error tracking software, see https://develop.sentry.dev/self-hosted/ - this is for the self-hosted open-source version, not the official Snetry SaaS. probably this is one charm, but if your research says it should be a set of charms, do that. if you need to build an oci image, do that with rockcraft to make a rock. if you need to install software, prefer snaps over debs. rhe charm should be professional level, with observability and a wide suite of tests, and hit all the review guidelines that canonical/charmhub-listing-review's self-review tool covers. use ci in github as needed. ensure everything is secure. ensure you encapsulate all best practices not just for installing self-hosted sentry but "day 2" operations as well. deisgn the charm to match "the juju way". choose k8s or machine, whichever makes most sense. ensure rhe charm deploys and integrates successfully, and really works. deploy cos and integrste with it and make sure that works. i plan to go away for several hours while you build this, so front-load your questions now if you have them. find out whateve you need from me in the next few minutes, and then build the best charm you possibly can.</p></div></a><div class="index-item-stats"><span>13 taskcreate · 11 bash · 6 write · 2 toolsearch · 2 agent · 1 askuserquestion · 1 taskupdate</span>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>Key constraint noted: <strong>8GB RAM / 8 CPU / 30GB disk</strong>. Full-parity Sentry officially wants 16GB+, and I also need to fit COS. That dominates everything — I'll build the charms for full parity but be pragmatic and honest about what runs concurrently at deploy-validation time. Let me record context and start the architecture research.</p></div></div><button class="expand-btn">Show more</button></div></div>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>Good progress on independent scaffolding. Now the build genuinely depends on the architecture report (exact image versions, service commands, bootstrap order) and the review checklist. Both research agents are still running. Let me commit what I have and wait for them — I'll be re-invoked when they complete.</p></div></div><button class="expand-btn">Show more</button></div></div>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>I've front-loaded all the research-independent work. Here's where things stand:</p>
+<p><strong>Done so far:</strong>
+- Locked the design decisions (k8s, full-parity ambition, relate-where-possible, multi-charm)
+- Renamed to <code>sentry-operators</code> monorepo with <code>charms/</code>, <code>rocks/</code>, <code>docs/</code>, <code>.github/</code>
+- Pushed scaffold (README, LICENSE, CONTRIBUTING, .gitignore), shared ruff/codespell/pyright config, and a reusable <code>tox.ini</code> to <code>tonyandrewmeyer/sentry-operator</code>
+- Verified tooling: charmcraft 4.2.1, rockcraft 1.19.0, juju 3.6.23, LXD, and a k8s cloud (<code>concierge-k8s</code>) all working
+- Created a 13-task plan to track the build</p>
+<p><strong>Two research agents are running in the background</strong> (the critical path):
+1. Full self-hosted Sentry architecture — exact service list, image versions, bootstrap/migration order, config inputs, minimal-subset tiering
+2. Charmhub-listing-review self-review checklist + the exact charm-lib names for data/observability/ingress integrations</p>
+<p>Everything downstream (rocks, charms, integrations) depends on these reports, so I'll continue the moment they land. I'll be re-invoked automatically when they complete — no idle polling needed.</p>
+<p>One thing I confirmed worth flagging: the box is <strong>8GB RAM</strong>, and you mentioned you can add more later. The charms will be <em>built</em> for full parity regardless, but running the entire stack <strong>plus</strong> COS simultaneously won't fit in 8GB — so for live validation I'll prove the core ingestion path end-to-end and demonstrate COS integration, scaling the concurrent footprint to whatever memory is available when I get there. More RAM whenever convenient will directly raise how much I can run at once.</p></div></div><button class="expand-btn">Show more</button></div></div>
+</div></div>
+<div class="index-item"><a href="page-001.html#msg-2026-06-13T12-44-39-452Z"><div class="index-item-header"><span class="index-item-number">#2</span><time datetime="2026-06-13T12:44:39.452Z" data-timestamp="2026-06-13T12:44:39.452Z">2026-06-13T12:44:39.452Z</time></div><div class="index-item-content"><p><task-notification>
+<task-id>a64239091734f71eb</task-id>
+<tool-use-id>toolu_01QRwaL5e9wqkQPQhxsGPEKw</tool-use-id>
+<output-file>/tmp/claude-1000/-home-ubuntu-sentry-operator/4b64920a-8b2e-441f-b691-6f051c5a5c3e/tasks/a64239091734f71eb.output</output-file>
+<status>completed</status></p>
+<summary>Agent "Research Sentry self-hosted architecture" completed</summary>
+<p><result>I have enough to write a comprehensive, authoritative report. I have the full compose file (master/nightly, structurally identical to 26.5.2), pinned image versions from the 26.5.2 release tag, all install scripts, config files, and the dependency model. Let me compile the final report.</p>
+<p>I have gathered all the authoritative data I need. Here is the complete structured report.</p>
+<hr />
+<h1>Self-Hosted Sentry Architecture Map (for Juju/K8s rock+charm replication)</h1>
+<p><strong>Sources:</strong> All data below is extracted directly from the <code>getsentry/self-hosted</code> repo. Service definitions, commands, and dependencies are verbatim from the canonical <code>docker-compose.yml</code>; image tags are from the pinned <code>.env</code> at release tag <strong><code>26.5.2</code></strong> (latest stable, published 2026-06-02). Config keys are from <code>sentry/sentry.conf.example.py</code>, <code>sentry/config.example.yml</code>, and <code>relay/config.example.yml</code> at tag <code>26.5.2</code>.</p>
+<p>&gt; ⚠️ Important: the <code>.env</code> on <code>master</code> uses <code>:nightly</code> tags. The <strong>pinned</strong> stable tags live in the <code>.env</code> of each release tag. At <code>26.5.2</code> every Sentry-family image is tagged <code>26.5.2</code> (they release in lockstep). Third-party images (postgres, kafka, clickhouse, etc.) are pinned independently in the compose file.</p>
+<hr />
+<h2>G. Current version &amp; target platform</h2>
+<ul>
+<li><strong>Latest stable self-hosted release tag: <code>26.5.2</code></strong> (calendar versioning <code>YY.MINOR.PATCH</code>; monthly cadence). Published 2026-06-02.</li>
+<li>All first-party images (<code>sentry</code>, <code>snuba</code>, <code>relay</code>, <code>symbolicator</code>, <code>taskbroker</code>, <code>vroom</code>, <code>uptime-checker</code>, <code>launchpad</code>) are published to <code>ghcr.io/getsentry/&amp;lt;name&amp;gt;:26.5.2</code>.</li>
+<li><strong>Architectures:</strong> images are published multi-arch for <strong>linux/amd64 and linux/arm64</strong>. Compose exposes <code>DOCKER_PLATFORM</code> to force <code>linux/arm64</code> on Apple Silicon.</li>
+<li><strong>Python:</strong> the Sentry app image is Python 3 based (the <code>sentry</code> Docker base; recent Sentry uses <strong>Python 3.13</strong>). Snuba and the Rust services (relay, symbolicator, vroom, taskbroker, uptime-checker, and the Rust snuba <code>rust-consumer</code>) are compiled binaries.</li>
+<li><strong>CPU requirement:</strong> ClickHouse requires <strong>SSE 4.2</strong> on x86_64 (install checks this).</li>
+<li><strong>Host minimums (from <code>install/_min-requirements.sh</code>):</strong></li>
+<li><code>feature-complete</code>: <strong>14000 MB RAM hard floor, 4 CPU</strong> (docs recommend 16 GB + 16 GB swap, 32 GB ideal).</li>
+<li><code>errors-only</code>: <strong>7000 MB RAM hard floor, 2 CPU</strong>.</li>
+<li>Docker ≥ 19.03.6, Compose ≥ 2.32.2.</li>
+</ul>
+<hr />
+<h2>A. Complete service inventory (grouped by tier)</h2>
+<p>All Sentry-app services share the <code>sentry-self-hosted-local</code> image (built from <code>ghcr.io/getsentry/sentry:26.5.2</code>), entrypoint <code>/etc/sentry/entrypoint.sh</code> (which sources the image's <code>/docker-entrypoint.sh</code>), and <code>SENTRY_CONF=/etc/sentry</code>. They differ only in the <code>command</code>. The default command for the base anchor is <code>["run","web"]</code>.</p>
+<h3>Tier 1 — Infrastructure / datastores</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Image (pinned)</th>
+<th>Command / entrypoint</th>
+<th>Ports</th>
+<th>Depends on</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>postgres</code></td>
+<td><code>postgres:14.23-bookworm</code></td>
+<td><code>postgres</code></td>
+<td>5432</td>
+<td>—</td>
+<td>Primary relational DB (orgs, projects, users, issues metadata, etc.). <code>POSTGRES_HOST_AUTH_METHOD=trust</code>. <code>shm_size: 256m</code>.</td>
+</tr>
+<tr>
+<td><code>pgbouncer</code></td>
+<td><code>edoburu/pgbouncer:v1.24.1-p1</code></td>
+<td>(image default)</td>
+<td>5432</td>
+<td>postgres (healthy)</td>
+<td>Connection pooler. <code>POOL_MODE=transaction</code>, <code>AUTH_TYPE=trust</code>, <code>DB_HOST=postgres</code>, <code>DB_NAME=postgres</code>. <strong>Sentry connects to <code>pgbouncer:5432</code>, not postgres directly.</strong></td>
+</tr>
+<tr>
+<td><code>redis</code></td>
+<td><code>redis:6.2.20-alpine</code></td>
+<td><code>redis-server /usr/local/etc/redis/redis.conf</code></td>
+<td>6379</td>
+<td>—</td>
+<td>Cache primary, buffers, quotas, TSDB, digests, rate limits, Relay project cache. Mounts <code>redis.conf</code>.</td>
+</tr>
+<tr>
+<td><code>memcached</code></td>
+<td><code>memcached:1.6.26-alpine</code></td>
+<td><code>-I ${SENTRY_MAX_EXTERNAL_SOURCEMAP_SIZE:-1M}</code></td>
+<td>11211</td>
+<td>—</td>
+<td>Django <code>CACHES["default"]</code> backend (sourcemap/optimization cache).</td>
+</tr>
+<tr>
+<td><code>kafka</code></td>
+<td><code>confluentinc/cp-kafka:7.6.6</code></td>
+<td>(image default)</td>
+<td>9092 (EXTERNAL), 9093 (INTERNAL), 29092, 29093 (controller)</td>
+<td>—</td>
+<td><strong>KRaft mode (no Zookeeper).</strong> <code>KAFKA_PROCESS_ROLES=broker,controller</code>, single node <code>KAFKA_NODE_ID=1001</code>, <code>CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk</code>. Event bus. 24h retention, 50MB max message.</td>
+</tr>
+<tr>
+<td><code>clickhouse</code></td>
+<td>built from <code>altinity/clickhouse-server:25.3.6.10034.altinitystable</code> (image <code>clickhouse-self-hosted-local</code>)</td>
+<td>(image default)</td>
+<td>8123 (HTTP), 9000 (native), 9009</td>
+<td>—</td>
+<td>OLAP store for all event/transaction/metrics/profiles tables. <code>MAX_MEMORY_USAGE_RATIO=0.3</code>. Mounts <code>config.xml</code> + <code>default-password.xml</code>.</td>
+</tr>
+<tr>
+<td><code>zookeeper</code></td>
+<td><strong>Not present</strong> — Kafka runs KRaft.</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3>Tier 2 — Object storage &amp; mail</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Image</th>
+<th>Command</th>
+<th>Ports</th>
+<th>Depends on</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>seaweedfs</code></td>
+<td><code>chrislusf/seaweedfs:4.17_large_disk</code></td>
+<td><code>weed server -dir=/data -filer -master -s3 -volume ...</code></td>
+<td>8333 (S3), 8888 (filer), 9333 (master), 8080 (volume), 18333/18888/19333/18080 (gRPC), 9091 (metrics)</td>
+<td>—</td>
+<td><strong>S3-compatible object store.</strong> Backs Sentry <strong>nodestore</strong> (<code>s3://nodestore</code>) and <strong>profiles</strong> (<code>s3://profiles</code>). Creds <code>sentry</code>/<code>sentry</code>. Replaced the old separate nodestore-in-Postgres approach.</td>
+</tr>
+<tr>
+<td><code>seaweedfs-admin</code></td>
+<td><code>chrislusf/seaweedfs:4.17_large_disk</code></td>
+<td><code>weed admin -port=23646 -master=seaweedfs:9333</code></td>
+<td>23646</td>
+<td>seaweedfs</td>
+<td>SeaweedFS admin/maintenance coordinator.</td>
+</tr>
+<tr>
+<td><code>seaweedfs-worker</code></td>
+<td><code>chrislusf/seaweedfs:4.17_large_disk</code></td>
+<td><code>weed worker -admin=seaweedfs-admin:23646 -jobType=all</code></td>
+<td>—</td>
+<td>seaweedfs-admin</td>
+<td>Background maintenance worker (vacuum/balance).</td>
+</tr>
+<tr>
+<td><code>smtp</code></td>
+<td><code>registry.gitlab.com/egos-tech/smtp</code></td>
+<td>(image default; Exim4)</td>
+<td>25</td>
+<td>—</td>
+<td>Outbound mail relay. Env <code>MAILNAME</code>, optional <code>SES_USER/SES_PASSWORD/SES_REGION</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3>Tier 3 — Edge / ingest gateway</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Image</th>
+<th>Command</th>
+<th>Ports</th>
+<th>Depends on</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nginx</code></td>
+<td><code>nginx:1.31.0-alpine</code></td>
+<td>(image default; mounts <code>nginx.conf</code>)</td>
+<td><strong><code>$SENTRY_BIND:80</code></strong> (the only externally published port; default <code>9000:80</code>)</td>
+<td>web (healthy), relay</td>
+<td>Public reverse proxy. Routes ingest (<code>/api/&amp;lt;id&amp;gt;/store|envelope</code>) to <code>relay</code>, everything else to <code>web:9000</code>.</td>
+</tr>
+<tr>
+<td><code>relay</code></td>
+<td><code>ghcr.io/getsentry/relay:26.5.2</code></td>
+<td>(image default)</td>
+<td>3000</td>
+<td>kafka, redis, web (all healthy)</td>
+<td><strong>Event intake.</strong> Receives SDK envelopes, authenticates/rate-limits, writes to Kafka ingest topics. Mounts <code>./relay</code> (config.yml + credentials.json) and geoip.</td>
+</tr>
+</tbody>
+</table>
+<h3>Tier 4 — Sentry web &amp; async workers</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Command (after <code>run</code>)</th>
+<th>Ports</th>
+<th>Healthcheck</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>web</code></td>
+<td><code>web</code></td>
+<td>9000</td>
+<td>TCP <code>GET /_health/</code> on 9000</td>
+<td>uWSGI Django app + API + UI.</td>
+</tr>
+<tr>
+<td><code>taskscheduler</code></td>
+<td><code>taskworker-scheduler</code></td>
+<td>—</td>
+<td>—</td>
+<td><strong>Replaces old Celery beat.</strong> Enqueues periodic tasks into taskbroker.</td>
+</tr>
+<tr>
+<td><code>taskworker</code></td>
+<td><code>taskworker --concurrency=$SENTRY_TASKWORKER_CONCURRENCY --rpc-host=taskbroker:50051 --max-child-task-count=10000</code></td>
+<td>—</td>
+<td>file <code>/tmp/health.txt</code></td>
+<td><strong>Replaces old Celery worker.</strong> Executes async tasks (post-process, digests, emails, etc.) pulled via RPC from taskbroker.</td>
+</tr>
+<tr>
+<td><code>taskbroker</code></td>
+<td><code>ghcr.io/getsentry/taskbroker:26.5.2</code>; <code>/opt/taskbroker -c /etc/taskbroker/config.yml</code></td>
+<td>50051 (gRPC)</td>
+<td>—</td>
+<td>Task queue broker. Reads activations from Kafka, stores inflight tasks in local SQLite (<code>sentry-taskbroker</code> volume), serves them to taskworkers over gRPC.</td>
+</tr>
+<tr>
+<td><code>sentry-cleanup</code></td>
+<td>image <code>sentry-cleanup-self-hosted-local</code> (built from <code>./cron</code> on sentry base); cron <code>0 0 * * * gosu sentry sentry cleanup --days $SENTRY_EVENT_RETENTION_DAYS</code></td>
+<td>—</td>
+<td>—</td>
+<td>Nightly retention cleanup cron.</td>
+</tr>
+</tbody>
+</table>
+<p>&gt; Note: Modern self-hosted Sentry has <strong>migrated off Celery to the taskworker/taskbroker system.</strong> There is no longer a <code>worker</code>, <code>worker-events</code>, <code>worker-transactions</code>, or <code>cron</code>/<code>beat</code> Celery service — those are now <code>taskworker</code> + <code>taskscheduler</code> + <code>taskbroker</code>.</p>
+<h3>Tier 5 — Sentry ingest/forwarder consumers (Kafka → Sentry)</h3>
+<p>These are <code>sentry</code> images running <code>run consumer &amp;lt;name&amp;gt;</code>. <strong>Bold = errors-only (no profile, always on); the rest carry <code>profiles: [feature-complete]</code>.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Consumer</th>
+<th>Profile</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>events-consumer</code></strong></td>
+<td><code>ingest-events --consumer-group ingest-consumer</code></td>
+<td>always</td>
+</tr>
+<tr>
+<td><strong><code>attachments-consumer</code></strong></td>
+<td><code>ingest-attachments --consumer-group ingest-consumer</code></td>
+<td>always</td>
+</tr>
+<tr>
+<td><strong><code>post-process-forwarder-errors</code></strong></td>
+<td><code>post-process-forwarder-errors</code> (sync on <code>snuba-commit-log</code> / <code>snuba-consumers</code>)</td>
+<td>always</td>
+</tr>
+<tr>
+<td><strong><code>subscription-consumer-events</code></strong></td>
+<td><code>events-subscription-results</code> (alerts)</td>
+<td>always</td>
+</tr>
+<tr>
+<td><code>transactions-consumer</code></td>
+<td><code>ingest-transactions</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>metrics-consumer</code></td>
+<td><code>ingest-metrics</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>generic-metrics-consumer</code></td>
+<td><code>ingest-generic-metrics</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>billing-metrics-consumer</code></td>
+<td><code>billing-metrics-consumer</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>ingest-replay-recordings</code></td>
+<td><code>ingest-replay-recordings</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>ingest-occurrences</code></td>
+<td><code>ingest-occurrences</code> (issue platform)</td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>ingest-profiles</code></td>
+<td><code>ingest-profiles</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>ingest-monitors</code></td>
+<td><code>ingest-monitors</code> (crons)</td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>ingest-feedback-events</code></td>
+<td><code>ingest-feedback-events</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>process-spans</code></td>
+<td><code>process-spans</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>process-segments</code></td>
+<td><code>process-segments</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>monitors-clock-tick</code></td>
+<td><code>monitors-clock-tick</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>monitors-clock-tasks</code></td>
+<td><code>monitors-clock-tasks</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>uptime-results</code></td>
+<td><code>uptime-results</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>post-process-forwarder-transactions</code></td>
+<td>sync on <code>snuba-transactions-commit-log</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>post-process-forwarder-issue-platform</code></td>
+<td>sync on <code>snuba-generic-events-commit-log</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>subscription-consumer-transactions</code></td>
+<td><code>transactions-subscription-results</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>subscription-consumer-metrics</code></td>
+<td><code>metrics-subscription-results</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>subscription-consumer-generic-metrics</code></td>
+<td><code>generic-metrics-subscription-results</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>subscription-consumer-eap-items</code></td>
+<td><code>subscription-results-eap-items</code></td>
+<td>feature-complete</td>
+</tr>
+</tbody>
+</table>
+<h3>Tier 6 — Snuba (Kafka → ClickHouse) — image <code>ghcr.io/getsentry/snuba:26.5.2</code></h3>
+<p>Shared env: <code>SNUBA_SETTINGS=self_hosted</code>, <code>CLICKHOUSE_HOST=clickhouse</code>, <code>DEFAULT_BROKERS=kafka:9092</code>, <code>REDIS_HOST=redis</code>. Depends on clickhouse+kafka+redis (healthy). Consumers use the Rust engine (<code>rust-consumer</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Command</th>
+<th>Profile</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>snuba-api</code></strong></td>
+<td>(default uWSGI API) port <strong>1218</strong></td>
+<td>always — query service for Sentry search/TSDB</td>
+</tr>
+<tr>
+<td><strong><code>snuba-errors-consumer</code></strong></td>
+<td><code>rust-consumer --storage errors --consumer-group snuba-consumers</code></td>
+<td>always</td>
+</tr>
+<tr>
+<td><strong><code>snuba-outcomes-consumer</code></strong></td>
+<td><code>rust-consumer --storage outcomes_raw --consumer-group snuba-consumers --auto-offset-reset=earliest</code></td>
+<td>always</td>
+</tr>
+<tr>
+<td><strong><code>snuba-outcomes-billing-consumer</code></strong></td>
+<td><code>rust-consumer --storage outcomes_raw ... --raw-events-topic outcomes-billing</code></td>
+<td>always</td>
+</tr>
+<tr>
+<td><strong><code>snuba-group-attributes-consumer</code></strong></td>
+<td><code>rust-consumer --storage group_attributes --consumer-group snuba-group-attributes-consumers</code></td>
+<td>always</td>
+</tr>
+<tr>
+<td><strong><code>snuba-replacer</code></strong></td>
+<td><code>replacer --storage errors</code> (applies merges/deletes/reprocessing to errors table)</td>
+<td>always</td>
+</tr>
+<tr>
+<td><strong><code>snuba-subscription-consumer-events</code></strong></td>
+<td><code>subscriptions-scheduler-executor --dataset events --entity events</code> (alert rule scheduling)</td>
+<td>always</td>
+</tr>
+<tr>
+<td><strong><code>snuba-subscription-consumer-eap-items</code></strong></td>
+<td><code>subscriptions-scheduler-executor --dataset events_analytics_platform --entity eap_items</code></td>
+<td>always (no profile in compose)</td>
+</tr>
+<tr>
+<td><code>snuba-transactions-consumer</code></td>
+<td><code>--storage transactions --consumer-group transactions_group</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-replays-consumer</code></td>
+<td><code>--storage replays</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-issue-occurrence-consumer</code></td>
+<td><code>--storage search_issues --consumer-group generic_events_group</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-metrics-consumer</code></td>
+<td><code>--storage metrics_raw</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-generic-metrics-distributions-consumer</code></td>
+<td><code>--storage generic_metrics_distributions_raw</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-generic-metrics-sets-consumer</code></td>
+<td><code>--storage generic_metrics_sets_raw</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-generic-metrics-counters-consumer</code></td>
+<td><code>--storage generic_metrics_counters_raw</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-generic-metrics-gauges-consumer</code></td>
+<td><code>--storage generic_metrics_gauges_raw</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-profiling-profiles-consumer</code></td>
+<td><code>--storage profiles</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-profiling-functions-consumer</code></td>
+<td><code>--storage functions_raw</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-profiling-profile-chunks-consumer</code></td>
+<td><code>--storage profile_chunks</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-eap-items-consumer</code></td>
+<td><code>--storage eap_items --consumer-group eap_items_group --use-rust-processor</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-subscription-consumer-transactions</code></td>
+<td><code>subscriptions-scheduler-executor --dataset transactions</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-subscription-consumer-metrics</code></td>
+<td><code>--dataset metrics --entity metrics_sets --entity metrics_counters</code></td>
+<td>feature-complete</td>
+</tr>
+<tr>
+<td><code>snuba-subscription-consumer-generic-metrics-distributions</code> / <code>-sets</code> / <code>-counters</code> / <code>-gauges</code></td>
+<td><code>--dataset generic_metrics --entity=generic_metrics_*</code></td>
+<td>feature-complete</td>
+</tr>
+</tbody>
+</table>
+<p>&gt; Note: there is <strong>no separate <code>snuba-cleanup</code>/<code>snuba-sessions-consumer</code> in current compose.</strong> ClickHouse cleanup is handled by <code>install/cleanup-clickhouse.sh</code> during install runs (and TTL on tables); the old <code>sessions</code> storage is gone. Subscription scheduling + execution are now a <strong>single combined <code>subscriptions-scheduler-executor</code></strong> process (not separate scheduler/executor).</p>
+<h3>Tier 7 — Symbolication, profiling, uptime, launchpad</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Image</th>
+<th>Command</th>
+<th>Ports</th>
+<th>Profile</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>symbolicator</code></td>
+<td><code>ghcr.io/getsentry/symbolicator:26.5.2</code></td>
+<td><code>run -c /etc/symbolicator/config.yml</code></td>
+<td>3021</td>
+<td>always</td>
+<td>Native stack-trace symbolication (debug files, JS sourcemaps).</td>
+</tr>
+<tr>
+<td><code>symbolicator-cleanup</code></td>
+<td>symbolicator image</td>
+<td><code>cleanup -c /etc/symbolicator/config.yml --repeat 1h</code></td>
+<td>—</td>
+<td>always</td>
+<td>Prunes cached debug symbols (<code>sentry-symbolicator</code> volume).</td>
+</tr>
+<tr>
+<td><code>vroom</code></td>
+<td><code>ghcr.io/getsentry/vroom:26.5.2</code></td>
+<td>(default)</td>
+<td>8085</td>
+<td>feature-complete</td>
+<td>Profiling service. Reads profiling/occurrences Kafka, stores in <code>s3://profiles</code> (seaweedfs), queries snuba.</td>
+</tr>
+<tr>
+<td><code>uptime-checker</code></td>
+<td><code>ghcr.io/getsentry/uptime-checker:26.5.2</code></td>
+<td><code>run</code></td>
+<td>—</td>
+<td>feature-complete</td>
+<td>Performs uptime monitor HTTP checks, emits results to Kafka. Redis at <code>redis://redis:6379</code>.</td>
+</tr>
+<tr>
+<td><code>launchpad-taskworker</code></td>
+<td><code>ghcr.io/getsentry/launchpad:26.5.2</code></td>
+<td><code>worker --verbose</code></td>
+<td>—</td>
+<td>feature-complete</td>
+<td>Mobile app-size analysis taskworker. RPC to taskbroker, needs <code>LAUNCHPAD_RPC_SHARED_SECRET</code> (shared with web).</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>B. Data-flow graph (event ingestion → display)</h2>
+<pre><code>SDK
+ │  envelope (HTTPS POST /api/&amp;lt;project&amp;gt;/envelope/)
+ ▼
+nginx  ──►  relay
+            │  auth via Relay credentials + Sentry registration (see D)
+            │  rate-limit / PII-scrub / normalize
+            ▼  produces to Kafka topics:
+            ├─ ingest-events       ─►  events-consumer (Sentry)
+            ├─ ingest-attachments  ─►  attachments-consumer
+            ├─ ingest-transactions ─►  transactions-consumer  (feature-complete)
+            ├─ ingest-metrics / ingest-generic-metrics, ingest-replay-recordings,
+            │  ingest-monitors, ingest-feedback, profiles, spans, outcomes ...
+            ▼
+Sentry ingest-consumer (events-consumer):
+   - reads ingest-events from Kafka
+   - runs the event pipeline (grouping, fingerprinting; may call symbolicator)
+   - writes event payload blob to NODESTORE (seaweedfs s3://nodestore)
+   - writes issue/group metadata to POSTGRES
+   - publishes the processed event to Kafka topic `events`  (eventstream)
+   ▼
+   ├──►  snuba-errors-consumer  ── reads `events` ──►  writes ClickHouse `errors` table (sentry_local DB)
+   │         (snuba-replacer applies merges/unmerges/deletes/reprocessing to errors)
+   │
+   └──►  post-process-forwarder-errors
+              reads `events`, waits for snuba commit-log sync (`snuba-commit-log`),
+              then triggers post-process tasks → enqueued to taskbroker → taskworker
+              (alert rule evaluation, notifications, integrations, plugins)
+
+Alerts/subscriptions:
+   snuba-subscription-consumer-events (scheduler-executor) runs subscription queries
+   against ClickHouse, emits results to `events-subscription-results` Kafka topic
+   ──► subscription-consumer-events (Sentry) ──► fires metric alerts
+
+Display:
+   web (Django/UI) issues search/aggregation queries  ──►  snuba-api:1218
+   snuba-api  ──► ClickHouse  (errors/transactions/metrics/...) and returns results
+   TSDB/series charts: SENTRY_TSDB = RedisSnubaTSDB → snuba-api + redis
+   outcomes (accepted/filtered/rate-limited counts): snuba-outcomes-consumer →
+       ClickHouse `outcomes_raw`/`outcomes` (stats UI)
+</code></pre>
+<p>Key principle: <strong>Kafka is the spine.</strong> Relay is the only producer of raw ingest; Sentry consumers process and re-publish to the <code>events</code> (and analogous) topics; Snuba consumers are the only writers into ClickHouse; Sentry reads ClickHouse only through <code>snuba-api</code>. Postgres holds metadata; nodestore (seaweedfs S3) holds the raw event blobs.</p>
+<hr />
+<h2>C. Bootstrap / migration order (day-1 and day-2)</h2>
+<p>This is the <strong>exact order</strong> from <code>install.sh</code> → <code>install/*.sh</code>. For a charm, the load-bearing steps are marked ★.</p>
+<ol>
+<li><code>upgrade-clickhouse.sh</code> / <code>cleanup-clickhouse.sh</code> — version-bump &amp; drop dropped tables (day-2 only).</li>
+<li><code>update-docker-images.sh</code> — pull pinned images.</li>
+<li><code>turn-things-off.sh</code> — <code>docker compose down</code> (stop before migrating).</li>
+<li>★ <code>create-docker-volumes.sh</code> — create the named external volumes.</li>
+<li><code>ensure-files-from-examples.sh</code> — copy <code>*.example.*</code> → real config files if absent (<code>sentry/config.yml</code>, <code>sentry/sentry.conf.py</code>, <code>relay/config.yml</code>, <code>nginx.conf</code>, etc.).</li>
+<li><code>check-memcached-backend.sh</code> — sanity check.</li>
+<li>★ <strong><code>ensure-relay-credentials.sh</code></strong> — if <code>relay/credentials.json</code> absent: <code>docker compose run --no-deps -T relay credentials generate --stdout &amp;gt; relay/credentials.json</code>. Generates Relay's keypair (public/secret/relay-id).</li>
+<li>★ <strong><code>generate-secret-key.sh</code></strong> — if <code>sentry/config.yml</code> still contains <code>system.secret-key: '!!changeme!!'</code>, generate a 50-char key and <code>sed</code> it in. (Alternative: set <code>SENTRY_SYSTEM_SECRET_KEY</code> env, which overrides the file.)</li>
+<li><code>build-docker-images.sh</code> — build local images (sentry, clickhouse, cron). In rocks you build these as your own OCI images.</li>
+<li>★ <strong><code>bootstrap-s3-nodestore.sh</code></strong> — start seaweedfs+postgres; create <code>s3://nodestore</code> bucket; set a lifecycle (expiry = <code>SENTRY_EVENT_RETENTION_DAYS</code>); add <code>SENTRY_NODESTORE</code> config to <code>sentry.conf.py</code> if missing.</li>
+<li>★ <strong><code>bootstrap-snuba.sh</code></strong> — <code>docker compose run snuba-api bootstrap --force</code>. <strong>This creates all Kafka topics AND runs all ClickHouse migrations (creates databases/tables).</strong> Skip flag: <code>SKIP_SNUBA_MIGRATIONS</code>.</li>
+<li><code>upgrade-postgres.sh</code> — pg_upgrade if version changed (day-2).</li>
+<li><code>ensure-correct-permissions-profiles-dir.sh</code>.</li>
+<li>★ <strong><code>bootstrap-s3-profiles.sh</code></strong> — create <code>s3://profiles</code> bucket in seaweedfs.</li>
+<li>★ <strong><code>set-up-and-migrate-database.sh</code></strong> — start postgres+pgbouncer, then:<ul>
+<li><code>docker compose run web upgrade --create-kafka-topics</code> (interactive: prompts to create the first admin user).</li>
+<li>CI/non-interactive: <code>web upgrade --noinput --create-kafka-topics</code> (then run <code>run --rm web createuser</code> separately).</li>
+<li><strong><code>sentry upgrade</code> = Django/Postgres migrations + creates Sentry's own Kafka topics.</strong></li>
+</ul>
+</li>
+<li><code>migrate-pgbouncer.sh</code>.</li>
+<li>★ <strong><code>geoip.sh</code></strong> — installs the empty <code>GeoLite2-City.mmdb</code> (or runs <code>geoipupdate</code> if <code>geoip/GeoIP.conf</code> exists with a MaxMind license key).</li>
+<li><code>setup-js-sdk-assets.sh</code> (optional; gated by <code>SETUP_JS_SDK_ASSETS</code>).</li>
+<li><code>setup-custom-ca-certificate.sh</code> (optional).</li>
+<li><code>wrap-up.sh</code>.</li>
+</ol>
+<p><strong>Minimal correct ordering for a charm (must respect dependencies):</strong>
+1. Generate <code>system.secret-key</code> (or set <code>SENTRY_SYSTEM_SECRET_KEY</code>).
+2. Generate Relay credentials (<code>relay credentials generate</code>).
+3. Bring up datastores: postgres, pgbouncer, redis, memcached, kafka, clickhouse, seaweedfs.
+4. Create seaweedfs buckets <code>nodestore</code> and <code>profiles</code>.
+5. <code>snuba bootstrap --force</code> (Kafka topics + ClickHouse schema). <strong>Must run before any snuba consumer or web.</strong>
+6. <code>sentry upgrade --create-kafka-topics</code> (Postgres migrations + Sentry topics). <strong>Must run before web/consumers serve traffic.</strong>
+7. <code>sentry createuser --superuser</code> (first admin).
+8. GeoIP db in place (empty file is fine).
+9. Start web, relay, consumers, taskworkers, etc.</p>
+<p>Day-2 upgrades re-run the same scripts: pull new images → <code>snuba bootstrap</code>/migrations → <code>sentry upgrade</code>. Migrations are idempotent and ordered; never start the app before migrations finish.</p>
+<hr />
+<h2>D. Configuration inputs</h2>
+<h3>Sentry app — <code>sentry/sentry.conf.example.py</code> (Python settings; the source of truth for connections)</h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Value (default)</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DATABASES["default"]</code></td>
+<td>ENGINE <code>sentry.db.postgres</code>, NAME <code>postgres</code>, USER <code>postgres</code>, PASSWORD <code>""</code>, <strong>HOST <code>pgbouncer</code></strong>, PORT <code>""</code></td>
+<td>Connects through pgbouncer.</td>
+</tr>
+<tr>
+<td><code>SENTRY_OPTIONS["system.event-retention-days"]</code></td>
+<td><code>int(env("SENTRY_EVENT_RETENTION_DAYS","90"))</code></td>
+<td>Drives ClickHouse TTL + nodestore lifecycle.</td>
+</tr>
+<tr>
+<td><code>SENTRY_OPTIONS["system.secret-key"]</code></td>
+<td>from <code>SENTRY_SYSTEM_SECRET_KEY</code> env if set; else from <code>config.yml</code></td>
+<td>Cryptographic key (sessions, CSRF, <strong>Relay registration</strong>).</td>
+</tr>
+<tr>
+<td><code>SENTRY_SELF_HOSTED_ERRORS_ONLY</code></td>
+<td><code>True</code> unless <code>COMPOSE_PROFILES == "feature-complete"</code></td>
+<td>Toggles transactions/profiles/replays features.</td>
+</tr>
+<tr>
+<td><code>SENTRY_NODESTORE</code></td>
+<td><code>sentry_nodestore_s3.S3PassthroughDjangoNodeStorage</code></td>
+<td>endpoint <code>http://seaweedfs:8333</code>, bucket <code>nodestore</code>, region <code>us-east-1</code>, key/secret <code>sentry</code>/<code>sentry</code>, <code>compression: True</code>.</td>
+</tr>
+<tr>
+<td><code>SENTRY_OPTIONS["redis.clusters"]</code></td>
+<td>default: host <code>redis</code>, port <code>6379</code>, db <code>0</code>, password <code>""</code></td>
+<td>Buffers/quotas/TSDB/digests/ratelimits.</td>
+</tr>
+<tr>
+<td><code>CACHES["default"]</code></td>
+<td>ReconnectingMemcache, LOCATION <code>["memcached:11211"]</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>SENTRY_CACHE</code></td>
+<td><code>sentry.cache.redis.RedisCache</code></td>
+<td>primary cache (event processing).</td>
+</tr>
+<tr>
+<td><code>DEFAULT_KAFKA_OPTIONS</code> / <code>KAFKA_CLUSTERS["default"]</code></td>
+<td><code>bootstrap.servers: kafka:9092</code>, <code>message.max.bytes: 50000000</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>SENTRY_EVENTSTREAM</code></td>
+<td><code>sentry.eventstream.kafka.KafkaEventStream</code></td>
+<td>publishes processed events to Snuba.</td>
+</tr>
+<tr>
+<td><code>SENTRY_TSDB</code></td>
+<td><code>sentry.tsdb.redissnuba.RedisSnubaTSDB</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>SENTRY_SEARCH</code></td>
+<td><code>sentry.search.snuba.EventsDatasetSnubaSearchBackend</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>SENTRY_WEB_HOST/PORT</code></td>
+<td><code>0.0.0.0:9000</code>, protocol <code>uwsgi</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Env <code>SNUBA</code></td>
+<td><code>http://snuba-api:1218</code></td>
+<td>(compose env) snuba query endpoint.</td>
+</tr>
+<tr>
+<td>Env <code>VROOM</code></td>
+<td><code>http://vroom:8085</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>SENTRY_OPTIONS["mail.list-namespace"]</code> / <code>mail.from</code></td>
+<td>from <code>SENTRY_MAIL_HOST</code> env</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3>Sentry app — <code>sentry/config.example.yml</code> (YAML options)</h3>
+<ul>
+<li><code>mail.host: 'smtp'</code> (and <code>mail.port/username/password/use-tls/use-ssl</code>, all commented).</li>
+<li><code>system.internal-url-prefix: 'http://web:9000'</code> (container-to-container; do <strong>not</strong> change).</li>
+<li><strong><code>system.url-prefix:</code></strong> (commented) — set to the <strong>public</strong> URL (e.g. <code>https://sentry.example.com</code>). This is what generates UI links; pair with <code>SENTRY_BIND</code>.</li>
+<li><code>system.secret-key: '!!changeme!!'</code> (replaced at install or via env).</li>
+<li><code>filestore.backend: 'filesystem'</code>, <code>filestore.options.location: '/data/files'</code>; <code>dsym.cache-path: '/data/dsym-cache'</code>; <code>releasefile.cache-path: '/data/releasefile-cache'</code>. <strong>(filesystem on the shared <code>sentry-data</code> volume by default — see F).</strong></li>
+<li><code>filestore.profiles-backend: 's3'</code> → seaweedfs <code>profiles</code> bucket.</li>
+<li><code>symbolicator.enabled: true</code>, <code>symbolicator.options.url: 'http://symbolicator:3021'</code>.</li>
+<li>Optional integrations (GitHub, Slack, Discord, Google auth) all here.</li>
+</ul>
+<h3>Relay — <code>relay/config.example.yml</code> + <code>relay/credentials.json</code></h3>
+<ul>
+<li><code>relay.upstream: http://web:9000/</code> — Relay talks to Sentry web.</li>
+<li><code>relay.host: 0.0.0.0</code>, <code>relay.port: 3000</code>.</li>
+<li><code>processing.enabled: true</code>; <code>processing.kafka_config</code> → <code>kafka:9092</code>, <code>message.max.bytes: 50000000</code>; <code>processing.redis: redis://redis:6379</code>; <code>processing.geoip_path: /geoip/GeoLite2-City.mmdb</code>.</li>
+<li><strong><code>credentials.json</code></strong> (generated): contains Relay's <code>secret_key</code>, <code>public_key</code>, and <code>id</code>. <strong>Relay authentication flow:</strong> Relay registers itself with Sentry web using its keypair; because this is an <em>internal/static</em> relay, Sentry trusts it. The shared <code>system.secret-key</code> on the Sentry side underpins the registration/signature verification. No manual public-key allow-listing is needed for the bundled relay (it's the trusted upstream relay).</li>
+</ul>
+<h3>Snuba — env (compose)</h3>
+<p><code>SNUBA_SETTINGS=self_hosted</code>, <code>CLICKHOUSE_HOST=clickhouse</code>, <code>DEFAULT_BROKERS=kafka:9092</code>, <code>REDIS_HOST=redis</code>, plus <code>SENTRY_EVENT_RETENTION_DAYS</code> (for table TTL).</p>
+<h3>Top-level <code>.env</code> (operator inputs)</h3>
+<p><code>COMPOSE_PROFILES</code> (<code>feature-complete</code>|<code>errors-only</code>), <code>SENTRY_EVENT_RETENTION_DAYS=90</code>, <code>SENTRY_BIND=9000</code>, <code>SENTRY_MAIL_HOST</code>, <code>SENTRY_SYSTEM_SECRET_KEY</code> (optional), <code>LAUNCHPAD_RPC_SHARED_SECRET</code>, <code>SENTRY_TASKWORKER_CONCURRENCY=4</code>, all image tags, healthcheck tunables, <code>STATSD_ADDR</code>.</p>
+<hr />
+<h2>E. Minimum-viable subset (degrade gracefully under ~8 GB RAM)</h2>
+<p>The official <code>errors-only</code> profile (<code>COMPOSE_PROFILES=errors-only</code>, ~7 GB floor) is exactly your minimum tier. Anything tagged <code>profiles: [feature-complete]</code> is omitted in errors-only.</p>
+<p><strong>Tier 0 — strictly required for end-to-end error tracking (send event → see it in UI):</strong>
+- Datastores: <code>postgres</code>, <code>pgbouncer</code>, <code>redis</code>, <code>memcached</code>, <code>kafka</code>, <code>clickhouse</code>
+- Object store: <code>seaweedfs</code> (+ <code>seaweedfs-admin</code>, <code>seaweedfs-worker</code>) — needed because nodestore is S3 (you <em>could</em> swap nodestore back to filesystem/Postgres to drop this, but stock config requires it)
+- Edge: <code>nginx</code>, <code>relay</code>
+- App: <code>web</code>, <code>taskworker</code>, <code>taskscheduler</code>, <code>taskbroker</code>
+- Ingest: <code>events-consumer</code>, <code>attachments-consumer</code>, <code>post-process-forwarder-errors</code>, <code>subscription-consumer-events</code>
+- Snuba: <code>snuba-api</code>, <code>snuba-errors-consumer</code>, <code>snuba-outcomes-consumer</code>, <code>snuba-outcomes-billing-consumer</code>, <code>snuba-group-attributes-consumer</code>, <code>snuba-replacer</code>, <code>snuba-subscription-consumer-events</code>
+- Symbolication: <code>symbolicator</code>, <code>symbolicator-cleanup</code> (needed for readable stack traces / sourcemaps)
+- Cron: <code>sentry-cleanup</code>
+- Mail: <code>smtp</code> (only if you want notifications/email)</p>
+<p><strong>Tier 1 — Performance/Transactions (drop if no tracing):</strong> <code>transactions-consumer</code>, <code>snuba-transactions-consumer</code>, <code>post-process-forwarder-transactions</code>, <code>subscription-consumer-transactions</code>, <code>snuba-subscription-consumer-transactions</code>, <code>metrics-consumer</code> + <code>generic-metrics-consumer</code> + all <code>snuba-metrics-*</code>/<code>snuba-generic-metrics-*</code> consumers and their subscription schedulers, <code>billing-metrics-consumer</code>, spans (<code>process-spans</code>, <code>process-segments</code>), <code>snuba-eap-items-consumer</code> + <code>subscription-consumer-eap-items</code>.</p>
+<p><strong>Tier 2 — Profiling:</strong> <code>vroom</code>, <code>ingest-profiles</code>, <code>snuba-profiling-*-consumer</code> (×3), <code>s3://profiles</code> bucket, <code>launchpad-taskworker</code>.</p>
+<p><strong>Tier 3 — Session Replay:</strong> <code>ingest-replay-recordings</code>, <code>snuba-replays-consumer</code>.</p>
+<p><strong>Tier 4 — Crons / Uptime / Feedback / Issue-platform:</strong> <code>ingest-monitors</code>, <code>monitors-clock-tick</code>, <code>monitors-clock-tasks</code>, <code>uptime-checker</code>, <code>uptime-results</code>, <code>ingest-feedback-events</code>, <code>ingest-occurrences</code>, <code>snuba-issue-occurrence-consumer</code>, <code>post-process-forwarder-issue-platform</code>.</p>
+<p>Attachments require <code>attachments-consumer</code> (already Tier 0). To shed even more on 8 GB, you can drop <code>attachments-consumer</code> if you don't need crash attachments, and set ClickHouse <code>MAX_MEMORY_USAGE_RATIO</code> carefully.</p>
+<hr />
+<h2>F. Gotchas for running these images in Kubernetes (outside compose)</h2>
+<ol>
+<li><strong>Shared <code>sentry-data</code> volume (RWX).</strong> All Sentry-app pods (<code>web</code>, <code>taskworker</code>, <code>taskscheduler</code>, every consumer, <code>sentry-cleanup</code>) mount <code>sentry-data:/data</code>. With stock <code>filestore.backend: filesystem</code> (location <code>/data/files</code>) and the dsym/releasefile caches under <code>/data</code>, this <strong>must be ReadWriteMany</strong> across web+workers, or you must switch <code>filestore.backend</code> to <code>s3</code> (seaweedfs/your own) so each pod is stateless. Strongly recommend the S3 filestore route for K8s. (Nodestore and profiles are already S3.)</li>
+<li><strong>Config dir <code>/etc/sentry</code></strong> is bind-mounted in compose (entrypoint, <code>config.yml</code>, <code>sentry.conf.py</code>). In rocks, bake these in or mount via ConfigMap/Secret. <code>system.secret-key</code>, relay <code>credentials.json</code>, and <code>relay/config.yml</code> are secrets.</li>
+<li><strong>Migration ordering is hard ordering, not soft.</strong> <code>snuba bootstrap</code> (topics + ClickHouse schema) and <code>sentry upgrade</code> (Postgres + Sentry topics) must complete <strong>before</strong> any consumer or <code>web</code> starts serving. Implement as a Juju action / init-job with leader-election so it runs once. The compose healthchecks (<code>depends_on: service_healthy</code>) only gate <em>startup connectivity</em>, not migration completion.</li>
+<li><strong>Kafka topic auto-creation.</strong> Topics are explicitly created by <code>snuba bootstrap</code> and <code>sentry upgrade --create-kafka-topics</code>. The single-node Kafka uses replication factor 1, 1 partition for <code>__consumer_offsets</code>. Don't rely on broker auto-create. If you externalize Kafka, pre-create topics or run the bootstrap commands.</li>
+<li><strong>Kafka is KRaft single-node</strong> (<code>CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk</code>, node 1001). For a charm you'll likely relate to a real Kafka cluster — then partitions/replication and consumer-group offsets behave differently; the <code>--no-strict-offset-reset</code> flags matter for resilience.</li>
+<li><strong>ClickHouse single-node settings.</strong> Mounts <code>config.xml</code> (single-shard/replica, <code>MAX_MEMORY_USAGE_RATIO=0.3</code>) and <code>default-password.xml</code>. SSE 4.2 required. <code>ulimits nofile 262144</code>. The Altinity build is used, not vanilla ClickHouse.</li>
+<li><strong>Healthchecks differ by service type.</strong> HTTP services use TCP/HTTP probes (<code>web</code>: <code>/_health/</code> on 9000; <code>snuba-api</code>: <code>api_healthcheck.py</code>; <code>relay</code>/<code>vroom</code>: <code>/health</code>). <strong>Consumers/taskworkers use a file-based liveness probe</strong>: they touch <code>/tmp/health.txt</code>, and the probe deletes it and fails if it's missing (<code>HEALTHCHECK_FILE_START_PERIOD=600s</code>, i.e. 10 min grace). Replicate this as a K8s liveness exec probe, or pass the <code>--healthcheck-file-path</code>/<code>--health-check-file</code> flag (already in commands) and probe accordingly.</li>
+<li><strong>Relay healthcheck/memory bug.</strong> Relay may misdetect container memory and fail its healthcheck, blocking ingest. Workaround in <code>relay/config.yml</code>: set <code>health.max_memory_percent: 1.0</code> and a spool path. Bake this into your relay config for K8s.</li>
+<li><strong><code>sentry-cleanup</code> cron.</strong> It's a long-running cron container (<code>0 0 * * *</code>). In K8s replace with a <code>CronJob</code> running <code>sentry cleanup --days $SENTRY_EVENT_RETENTION_DAYS</code>. Likewise <code>symbolicator-cleanup</code> (<code>--repeat 1h</code>) and ClickHouse cleanup.</li>
+<li><strong>pgbouncer in the path.</strong> Sentry connects to <code>pgbouncer:5432</code> (transaction pooling, <code>AUTH_TYPE=trust</code>). Migrations (<code>sentry upgrade</code>) historically need a direct Postgres connection for some advisory-lock/index operations — the install script starts both and the migration step has special handling (issue #2758). Be careful running Django migrations through a transaction-pooling pgbouncer; point migration jobs at Postgres directly.</li>
+<li><strong>Internal vs external URL.</strong> <code>system.internal-url-prefix: http://web:9000</code> is for service-to-service; <code>system.url-prefix</code> is the public URL. Relay's <code>relay.upstream</code> also points at <code>http://web:9000/</code>. Map these to K8s Service DNS names.</li>
+<li><strong>GeoIP file must exist.</strong> An empty <code>geoip/GeoLite2-City.mmdb</code> is required or relay's <code>geoip_path</code> load fails; ship the empty mmdb in the rock and optionally wire <code>geoipupdate</code> with a MaxMind license.</li>
+<li><strong>Taskbroker SQLite is stateful.</strong> <code>sentry-taskbroker</code> volume holds up to ~2048 inflight tasks; losing it loses those tasks. Give taskbroker a small persistent volume (it's effectively a single-writer; don't scale it horizontally without care).</li>
+<li><strong>Two consumer "tiers" share consumer-group names deliberately</strong> (e.g. <code>post-process-forwarder</code> group across the three PPF variants; <code>snuba-consumers</code> across several snuba consumers). Preserve the exact <code>--consumer-group</code> and <code>--synchronize-commit-*</code> flags — the post-process forwarders synchronize against Snuba's commit-log topics (<code>snuba-commit-log</code>, <code>snuba-transactions-commit-log</code>, <code>snuba-generic-events-commit-log</code>) to avoid post-processing events Snuba hasn't durably written yet. Getting these wrong causes lost or duplicated post-processing.</li>
+</ol>
+<hr />
+<h3>Quick reference — pinned third-party image tags (26.5.2)</h3>
+<ul>
+<li>postgres <code>14.23-bookworm</code> · pgbouncer <code>edoburu/pgbouncer:v1.24.1-p1</code> · redis <code>6.2.20-alpine</code> · memcached <code>1.6.26-alpine</code> · kafka <code>confluentinc/cp-kafka:7.6.6</code> (KRaft) · clickhouse <code>altinity/clickhouse-server:25.3.6.10034.altinitystable</code> · seaweedfs <code>chrislusf/seaweedfs:4.17_large_disk</code> · nginx <code>1.31.0-alpine</code> · smtp <code>registry.gitlab.com/egos-tech/smtp</code> · geoipupdate <code>ghcr.io/maxmind/geoipupdate:v6.1.0</code>.</li>
+</ul>
+<h3>First-party image tags (all <code>:26.5.2</code>)</h3>
+<p><code>ghcr.io/getsentry/{sentry,snuba,relay,symbolicator,taskbroker,vroom,uptime-checker,launchpad}:26.5.2</code>.</p>
+<p>All raw source files are cached locally at <code>/tmp/sentry-research/</code> (docker-compose.yml, env.txt, install.sh, sentry.conf.example.py) if you want to re-grep exact strings.</result>
+<usage><subagent_tokens>52907</subagent_tokens><tool_uses>13</tool_uses><duration_ms>223545</duration_ms></usage>
+</task-notification></p></div></a><div class="index-item-stats"><span>73 bash · 51 write · 32 read · 18 edit · 10 taskupdate · 3 fetch · 3 agent</span>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>Excellent — that's a comprehensive, authoritative architecture map. Several important updates vs. my assumptions: modern Sentry (26.5.2) has <strong>dropped Celery</strong> for taskworker/taskbroker, uses <strong>SeaweedFS S3</strong> for nodestore/profiles, <strong>pgbouncer + memcached + KRaft Kafka</strong>, and Altinity ClickHouse. Crucially, the report cached the raw source files locally. Let me grab them and record the key facts before they could be lost to a context summary.</p></div></div><button class="expand-btn">Show more</button></div></div>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>I now have complete ground truth. The key realization: Sentry's config is <strong>plain Python reading env vars</strong>, and the charm controls <code>/etc/sentry/*</code> via Pebble <code>push</code> — so I template connection settings from relation data. Let me record the critical architecture facts to memory (so a context summary can't lose them) and write the design doc.</p></div></div><button class="expand-btn">Show more</button></div></div>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>Critical findings — and they <em>simplify</em> things. Snuba takes SASL purely via env vars (<code>KAFKA_SECURITY_PROTOCOL</code>, <code>KAFKA_SASL_*</code>); no settings file needed. Sentry needs the <strong>nested</strong> <code>KAFKA_CLUSTERS["default"]["common"]</code> form (the flat form strips SASL from consumers); Relay uses a <code>{name,value}</code> list. Let me record this, then refactor snuba to the simpler env approach.</p></div></div><button class="expand-btn">Show more</button></div></div>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>Snuba committed (I'll address the Dependabot alerts in the final hardening pass). The relay charm is self-contained and the pattern is now well-established, so I'll <strong>delegate relay to a subagent</strong> (with the two committed charms as references) while I build the core sentry-k8s charm myself. Let me write a precise spec:</p></div></div><button class="expand-btn">Show more</button></div></div>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>The analytics tier is still pulling images (Kafka, ClickHouse, and Snuba images are large — several minutes on one node). Two things are now running in the background: the deployment monitor (will notify me when ClickHouse settles) and the CI/docs/bundle subagent.</p>
+<p>Let me give a status summary while I await the deploy, since the next move depends on whether ClickHouse comes up cleanly:</p>
+<p><strong>Where things stand (~2.5 hrs in):</strong>
+- <strong>All four charms built, tested, and packing cleanly:</strong> <code>clickhouse-k8s</code> (11 unit tests), <code>sentry-snuba-k8s</code> (14), <code>sentry-relay-k8s</code> (18), <code>sentry-k8s</code> (24) — 67 unit tests total, all lint/format/pyright green, all four produce <code>.charm</code> artifacts. Committed and pushed.
+- <strong>Hard integration problems solved &amp; recorded:</strong> SASL/SCRAM Kafka auth wired into all three Sentry-family workloads (the big risk); Postgres-backed nodestore (drops SeaweedFS); Redis cache (drops memcached); direct Postgres (drops pgbouncer); taskbroker + symbolicator as sidecar containers.
+- <strong>Now deploying</strong> the analytics tier (redis-k8s, kafka-k8s, clickhouse-k8s, sentry-snuba-k8s) to validate the riskiest path end-to-end. Images are mid-pull.
+- <strong>In parallel:</strong> a subagent is writing the GitHub CI workflows, the Diátaxis docs set, the deployment bundle, and the top-level Terraform module.</p>
+<p>I'll continue the moment ClickHouse and Snuba settle (or error) — that result tells me whether the workload entrypoints/bootstrap are correct, which is the gate before I wire in COS observability and re-pack. Awaiting the monitor.</p></div></div><button class="expand-btn">Show more</button></div></div>
+</div></div>
+<div class="index-item"><a href="page-001.html#msg-2026-06-13T13-35-09-135Z"><div class="index-item-header"><span class="index-item-number">#3</span><time datetime="2026-06-13T13:35:09.135Z" data-timestamp="2026-06-13T13:35:09.135Z">2026-06-13T13:35:09.135Z</time></div><div class="index-item-content"><p><task-notification>
+<task-id>b83cpkc23</task-id>
+<tool-use-id>toolu_01648PkdLZY7MrRkxsHmViV9</tool-use-id>
+<output-file>/tmp/claude-1000/-home-ubuntu-sentry-operator/4b64920a-8b2e-441f-b691-6f051c5a5c3e/tasks/b83cpkc23.output</output-file>
+<status>completed</status></p>
+<summary>Background command "Poll until clickhouse settles" completed (exit code 0)</summary>
+<p></task-notification></p></div></a><div class="index-item-stats"><span>22 bash · 2 write · 1 agent</span>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>Kafka's broker is healthy; its charm status just lags. The deployment is fundamentally working. While it finishes settling, let me <strong>delegate the observability/COS integration</strong> to a subagent (it edits charm <code>src</code>/<code>lib</code>, non-overlapping with the CI subagent's files and my live-model work). Writing a precise spec:</p></div></div><button class="expand-btn">Show more</button></div></div>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p>The relation data <strong>does</strong> have <code>endpoints: kafka-k8s-0.kafka-k8s-endpoints:9092</code>, the Kafka topic was created at 01:37:16, and Snuba started <strong>"Running snuba bootstrap"</strong> at 01:37:17. So the charm logic is correct — the earlier "missing kafka" was just transient (Kafka hadn't created the topic until it went active). The pivotal bootstrap (SASL Kafka topics + ClickHouse schema) is now executing. Awaiting the monitor result.</p></div></div><button class="expand-btn">Show more</button></div></div>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p><strong>Root cause found:</strong> Snuba's bootstrap gets <em>past</em> Kafka but <strong>can't reach ClickHouse at <code>clickhouse-k8s.testing.svc.cluster.local:9000</code></strong> (16 timed-out attempts). The regular ClusterIP service only forwards <em>declared</em> ports, and my charms never open theirs. The fix is to open the workload ports (and/or publish the headless <code>-endpoints</code> FQDN). Let me confirm by testing the headless endpoint from the Snuba container:</p></div></div><button class="expand-btn">Show more</button></div></div>
+<div class="index-item-long-text"><div class="truncatable"><div class="truncatable-content"><div class="index-item-long-text-content"><p><strong>Confirmed the bug:</strong> the regular ClusterIP service only forwards <em>declared</em> ports, so cross-charm connections to ClickHouse:9000 (and Snuba:1218, Sentry:9000) fail — I never open the workload ports. The headless endpoint works, proving it. The fix: each charm must <code>set_ports(...)</code>. Let me record this and wait for the observability subagent (editing all charm.py files now) to finish before applying the fix + re-packing.</p></div></div><button class="expand-btn">Show more</button></div></div>
+</div></div>
+        
+
+<div class="pagination">
+<span class="current">Index</span>
+<span class="disabled">&larr; Prev</span>
+<a href="page-001.html">1</a>
+<a href="page-001.html">Next &rarr;</a>
+</div>
+
+
+        <dialog id="search-modal">
+            <div class="search-modal-header">
+                <input type="text" id="modal-search-input" placeholder="Search..." aria-label="Search transcripts">
+                <button id="modal-search-btn" type="button" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+                </button>
+                <button id="modal-close-btn" type="button" aria-label="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+                </button>
+            </div>
+            <div id="search-status"></div>
+            <div id="search-results"></div>
+        </dialog>
+        <script>
+(function() {
+    var totalPages = 1;
+    var searchBox = document.getElementById('search-box');
+    var searchInput = document.getElementById('search-input');
+    var searchBtn = document.getElementById('search-btn');
+    var modal = document.getElementById('search-modal');
+    var modalInput = document.getElementById('modal-search-input');
+    var modalSearchBtn = document.getElementById('modal-search-btn');
+    var modalCloseBtn = document.getElementById('modal-close-btn');
+    var searchStatus = document.getElementById('search-status');
+    var searchResults = document.getElementById('search-results');
+
+    if (!searchBox || !modal) return;
+
+    // Hide search on file:// protocol (doesn't work due to CORS restrictions)
+    if (window.location.protocol === 'file:') return;
+
+    // Show search box (progressive enhancement)
+    searchBox.style.display = 'flex';
+
+    // Gist preview support - detect if we're on gisthost.github.io or gistpreview.github.io
+    var hostname = window.location.hostname;
+    var isGistPreview = hostname === 'gisthost.github.io' || hostname === 'gistpreview.github.io';
+    var gistId = null;
+    var gistOwner = null;
+    var gistInfoLoaded = false;
+
+    if (isGistPreview) {
+        // Extract gist ID from URL query string like ?78a436a8a9e7a2e603738b8193b95410/index.html
+        var queryMatch = window.location.search.match(/^\?([a-f0-9]+)/i);
+        if (queryMatch) {
+            gistId = queryMatch[1];
+        }
+    }
+
+    async function loadGistInfo() {
+        if (!isGistPreview || !gistId || gistInfoLoaded) return;
+        try {
+            var response = await fetch('https://api.github.com/gists/' + gistId);
+            if (response.ok) {
+                var info = await response.json();
+                gistOwner = info.owner.login;
+                gistInfoLoaded = true;
+            }
+        } catch (e) {
+            console.error('Failed to load gist info:', e);
+        }
+    }
+
+    function getPageFetchUrl(pageFile) {
+        if (isGistPreview && gistOwner && gistId) {
+            // Use raw gist URL for fetching content
+            return 'https://gist.githubusercontent.com/' + gistOwner + '/' + gistId + '/raw/' + pageFile;
+        }
+        return pageFile;
+    }
+
+    function getPageLinkUrl(pageFile) {
+        if (isGistPreview && gistId) {
+            // Use gistpreview URL format for navigation links
+            return '?' + gistId + '/' + pageFile;
+        }
+        return pageFile;
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function openModal(query) {
+        modalInput.value = query || '';
+        searchResults.innerHTML = '';
+        searchStatus.textContent = '';
+        modal.showModal();
+        modalInput.focus();
+        if (query) {
+            performSearch(query);
+        }
+    }
+
+    function closeModal() {
+        modal.close();
+        // Update URL to remove search fragment, preserving path and query string
+        if (window.location.hash.startsWith('#search=')) {
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+    }
+
+    function updateUrlHash(query) {
+        if (query) {
+            // Preserve path and query string when adding hash
+            history.replaceState(null, '', window.location.pathname + window.location.search + '#search=' + encodeURIComponent(query));
+        }
+    }
+
+    function highlightTextNodes(element, searchTerm) {
+        var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+        var nodesToReplace = [];
+
+        while (walker.nextNode()) {
+            var node = walker.currentNode;
+            if (node.nodeValue.toLowerCase().indexOf(searchTerm.toLowerCase()) !== -1) {
+                nodesToReplace.push(node);
+            }
+        }
+
+        nodesToReplace.forEach(function(node) {
+            var text = node.nodeValue;
+            var regex = new RegExp('(' + escapeRegex(searchTerm) + ')', 'gi');
+            var parts = text.split(regex);
+            if (parts.length > 1) {
+                var span = document.createElement('span');
+                parts.forEach(function(part) {
+                    if (part.toLowerCase() === searchTerm.toLowerCase()) {
+                        var mark = document.createElement('mark');
+                        mark.textContent = part;
+                        span.appendChild(mark);
+                    } else {
+                        span.appendChild(document.createTextNode(part));
+                    }
+                });
+                node.parentNode.replaceChild(span, node);
+            }
+        });
+    }
+
+    function fixInternalLinks(element, pageFile) {
+        // Update all internal anchor links to include the page file
+        var links = element.querySelectorAll('a[href^="#"]');
+        links.forEach(function(link) {
+            var href = link.getAttribute('href');
+            link.setAttribute('href', pageFile + href);
+        });
+    }
+
+    function processPage(pageFile, html, query) {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+        var resultsFromPage = 0;
+
+        // Find all message blocks
+        var messages = doc.querySelectorAll('.message');
+        messages.forEach(function(msg) {
+            var text = msg.textContent || '';
+            if (text.toLowerCase().indexOf(query.toLowerCase()) !== -1) {
+                resultsFromPage++;
+
+                // Get the message ID for linking
+                var msgId = msg.id || '';
+                var pageLinkUrl = getPageLinkUrl(pageFile);
+                var link = pageLinkUrl + (msgId ? '#' + msgId : '');
+
+                // Clone the message HTML and highlight matches
+                var clone = msg.cloneNode(true);
+                // Fix internal links to include the page file
+                fixInternalLinks(clone, pageLinkUrl);
+                highlightTextNodes(clone, query);
+
+                var resultDiv = document.createElement('div');
+                resultDiv.className = 'search-result';
+                resultDiv.innerHTML = '<a href="' + link + '">' +
+                    '<div class="search-result-page">' + escapeHtml(pageFile) + '</div>' +
+                    '<div class="search-result-content">' + clone.innerHTML + '</div>' +
+                    '</a>';
+                searchResults.appendChild(resultDiv);
+            }
+        });
+
+        return resultsFromPage;
+    }
+
+    async function performSearch(query) {
+        if (!query.trim()) {
+            searchStatus.textContent = 'Enter a search term';
+            return;
+        }
+
+        updateUrlHash(query);
+        searchResults.innerHTML = '';
+        searchStatus.textContent = 'Searching...';
+
+        // Load gist info if on gistpreview (needed for constructing URLs)
+        if (isGistPreview && !gistInfoLoaded) {
+            searchStatus.textContent = 'Loading gist info...';
+            await loadGistInfo();
+            if (!gistOwner) {
+                searchStatus.textContent = 'Failed to load gist info. Search unavailable.';
+                return;
+            }
+        }
+
+        var resultsFound = 0;
+        var pagesSearched = 0;
+
+        // Build list of pages to fetch
+        var pagesToFetch = [];
+        for (var i = 1; i <= totalPages; i++) {
+            pagesToFetch.push('page-' + String(i).padStart(3, '0') + '.html');
+        }
+
+        searchStatus.textContent = 'Searching...';
+
+        // Process pages in batches of 3, but show results immediately as each completes
+        var batchSize = 3;
+        for (var i = 0; i < pagesToFetch.length; i += batchSize) {
+            var batch = pagesToFetch.slice(i, i + batchSize);
+
+            // Create promises that process results immediately when each fetch completes
+            var promises = batch.map(function(pageFile) {
+                return fetch(getPageFetchUrl(pageFile))
+                    .then(function(response) {
+                        if (!response.ok) throw new Error('Failed to fetch');
+                        return response.text();
+                    })
+                    .then(function(html) {
+                        // Process and display results immediately
+                        var count = processPage(pageFile, html, query);
+                        resultsFound += count;
+                        pagesSearched++;
+                        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + pagesSearched + '/' + totalPages + ' pages...';
+                    })
+                    .catch(function() {
+                        pagesSearched++;
+                        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + pagesSearched + '/' + totalPages + ' pages...';
+                    });
+            });
+
+            // Wait for this batch to complete before starting the next
+            await Promise.all(promises);
+        }
+
+        searchStatus.textContent = 'Found ' + resultsFound + ' result(s) in ' + totalPages + ' pages';
+    }
+
+    // Event listeners
+    searchBtn.addEventListener('click', function() {
+        openModal(searchInput.value);
+    });
+
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            openModal(searchInput.value);
+        }
+    });
+
+    modalSearchBtn.addEventListener('click', function() {
+        performSearch(modalInput.value);
+    });
+
+    modalInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            performSearch(modalInput.value);
+        }
+    });
+
+    modalCloseBtn.addEventListener('click', closeModal);
+
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+
+    // Check for #search= in URL on page load
+    if (window.location.hash.startsWith('#search=')) {
+        var query = decodeURIComponent(window.location.hash.substring(8));
+        if (query) {
+            searchInput.value = query;
+            openModal(query);
+        }
+    }
+})();
+        </script>
+    </div>
+    <script>
+document.querySelectorAll('time[data-timestamp]').forEach(function(el) {
+    const timestamp = el.getAttribute('data-timestamp');
+    const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    if (isToday) { el.textContent = timeStr; }
+    else { el.textContent = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + timeStr; }
+});
+document.querySelectorAll('pre.json').forEach(function(el) {
+    let text = el.textContent;
+    text = text.replace(/"([^"]+)":/g, '<span style="color: #ce93d8">"$1"</span>:');
+    text = text.replace(/: "([^"]*)"/g, ': <span style="color: #81d4fa">"$1"</span>');
+    text = text.replace(/: (\d+)/g, ': <span style="color: #ffcc80">$1</span>');
+    text = text.replace(/: (true|false|null)/g, ': <span style="color: #f48fb1">$1</span>');
+    el.innerHTML = text;
+});
+document.querySelectorAll('.truncatable').forEach(function(wrapper) {
+    const content = wrapper.querySelector('.truncatable-content');
+    const btn = wrapper.querySelector('.expand-btn');
+    if (content.scrollHeight > 250) {
+        wrapper.classList.add('truncated');
+        btn.addEventListener('click', function() {
+            if (wrapper.classList.contains('truncated')) { wrapper.classList.remove('truncated'); wrapper.classList.add('expanded'); btn.textContent = 'Show less'; }
+            else { wrapper.classList.remove('expanded'); wrapper.classList.add('truncated'); btn.textContent = 'Show more'; }
+        });
+    }
+});
+</script>
+</body>
+</html>

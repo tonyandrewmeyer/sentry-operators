@@ -1,0 +1,125 @@
+# Juju bundle: a full self-hosted Sentry stack on Kubernetes.
+#
+# Deploys the four sentry-operators charms from latest/edge together with the
+# Canonical data charms (PostgreSQL, Redis, Kafka) and Traefik for ingress, and
+# wires every integration.
+#
+# A feature-complete deployment is resource hungry (~16 GB RAM recommended).
+# For an errors-only, lighter footprint set feature-complete=false on both
+# sentry-k8s and sentry-snuba-k8s.
+#
+#   juju deploy ./releases/bundle.yaml --trust
+name: sentry
+description: |
+  Self-hosted, open-source Sentry: error tracking and performance monitoring,
+  deployed and operated the Juju way on Kubernetes.
+
+applications:
+  # --- sentry-operators charms (this repo) ---
+  clickhouse-k8s:
+    charm: clickhouse-k8s
+    channel: latest/edge
+    scale: 1
+    trust: true
+    constraints: arch=amd64 mem=4G
+    storage:
+      data: 10G
+    resources:
+      clickhouse-image: altinity/clickhouse-server:25.3.6.10034.altinitystable
+
+  sentry-snuba-k8s:
+    charm: sentry-snuba-k8s
+    channel: latest/edge
+    scale: 1
+    trust: true
+    constraints: arch=amd64 mem=4G
+    options:
+      feature-complete: true
+      event-retention-days: 90
+    resources:
+      snuba-image: ghcr.io/getsentry/snuba:26.5.2
+
+  sentry-relay-k8s:
+    charm: sentry-relay-k8s
+    channel: latest/edge
+    scale: 1
+    trust: true
+    constraints: arch=amd64 mem=2G
+    options:
+      log-level: info
+    resources:
+      relay-image: ghcr.io/getsentry/relay:26.5.2
+
+  sentry-k8s:
+    charm: sentry-k8s
+    channel: latest/edge
+    scale: 1
+    trust: true
+    constraints: arch=amd64 mem=8G
+    storage:
+      data: 10G
+      taskbroker-data: 1G
+      symbolicator-cache: 5G
+    options:
+      feature-complete: true
+      event-retention-days: 90
+    resources:
+      sentry-image: ghcr.io/getsentry/sentry:26.5.2
+      taskbroker-image: ghcr.io/getsentry/taskbroker:26.5.2
+      symbolicator-image: ghcr.io/getsentry/symbolicator:26.5.2
+
+  # --- Canonical data charms ---
+  postgresql-k8s:
+    charm: postgresql-k8s
+    channel: 14/stable
+    scale: 1
+    trust: true
+    constraints: arch=amd64 mem=2G
+    options:
+      plugin_citext_enable: true
+      plugin_pg_trgm_enable: true
+
+  redis-k8s:
+    charm: redis-k8s
+    channel: latest/edge
+    scale: 1
+    trust: true
+    constraints: arch=amd64 mem=1G
+
+  kafka-k8s:
+    charm: kafka-k8s
+    channel: 3/stable
+    scale: 1
+    trust: true
+    constraints: arch=amd64 mem=2G
+    options:
+      roles: broker,controller
+
+  # --- Ingress ---
+  traefik-k8s:
+    charm: traefik-k8s
+    channel: latest/stable
+    scale: 1
+    trust: true
+    constraints: arch=amd64 mem=1G
+
+relations:
+  # Snuba -> ClickHouse / Kafka / Redis
+  - [sentry-snuba-k8s:clickhouse, clickhouse-k8s:clickhouse]
+  - [sentry-snuba-k8s:kafka, kafka-k8s:kafka-client]
+  - [sentry-snuba-k8s:redis, redis-k8s:redis]
+
+  # Sentry -> Postgres / Kafka / Redis / Snuba
+  - [sentry-k8s:database, postgresql-k8s:database]
+  - [sentry-k8s:kafka, kafka-k8s:kafka-client]
+  - [sentry-k8s:redis, redis-k8s:redis]
+  - [sentry-k8s:snuba, sentry-snuba-k8s:snuba]
+
+  # Relay -> Kafka / Redis / Sentry
+  - [sentry-relay-k8s:kafka, kafka-k8s:kafka-client]
+  - [sentry-relay-k8s:redis, redis-k8s:redis]
+  - [sentry-relay-k8s:sentry, sentry-k8s:sentry-relay]
+
+  # Ingress
+  - [sentry-k8s:ingress, traefik-k8s:ingress]
+  - [sentry-relay-k8s:ingress, traefik-k8s:ingress]

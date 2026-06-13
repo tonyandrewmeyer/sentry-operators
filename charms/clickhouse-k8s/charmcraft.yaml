@@ -1,0 +1,101 @@
+# This file configures Charmcraft.
+# See https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/
+type: charm
+name: clickhouse-k8s
+title: ClickHouse for Sentry
+summary: A single-node ClickHouse column store for self-hosted Sentry's Snuba.
+description: |
+  ClickHouse is the open-source column-oriented database that backs Snuba, the
+  search and analytics service of self-hosted Sentry.
+
+  This charm runs a single-node ClickHouse server tuned for Snuba: reduced
+  internal logging, a memory cap relative to the unit's resources, and a schema
+  that Snuba bootstraps and migrates over the wire. It exposes a
+  ``sentry_clickhouse`` integration that hands Snuba the connection details.
+
+  It exists so that the Sentry charm set can stand up the analytics tier the
+  Juju way - as its own scalable, observable application - rather than burying
+  ClickHouse inside another workload. It is useful to anyone running self-hosted
+  Sentry on Kubernetes with Juju.
+
+# Documentation:
+# https://documentation.ubuntu.com/charmcraft/stable/howto/build-guides/select-platforms/
+base: ubuntu@24.04
+platforms:
+  amd64:
+
+links:
+  documentation: https://github.com/tonyandrewmeyer/sentry-operators/blob/main/docs/index.md
+  source: https://github.com/tonyandrewmeyer/sentry-operators
+  issues: https://github.com/tonyandrewmeyer/sentry-operators/issues
+  website: https://clickhouse.com
+  contact: tony.meyer@gmail.com
+
+assumes:
+  - juju >= 3.6
+  - k8s-api
+
+containers:
+  clickhouse:
+    resource: clickhouse-image
+    mounts:
+      - storage: data
+        location: /var/lib/clickhouse
+
+resources:
+  clickhouse-image:
+    type: oci-image
+    description: |
+      OCI image for the ClickHouse server. Pinned to the Altinity build used by
+      self-hosted Sentry 26.5.2, which is validated against Snuba's migrations.
+    upstream-source: altinity/clickhouse-server:25.3.6.10034.altinitystable
+
+storage:
+  data:
+    type: filesystem
+    location: /var/lib/clickhouse
+    minimum-size: 10G
+
+config:
+  options:
+    max-memory-usage-ratio:
+      description: |
+        Fraction of the unit's RAM that ClickHouse may use for the server
+        (max_server_memory_usage_to_ram_ratio). Lower this on small units.
+      default: 0.3
+      type: float
+    log-level:
+      description: |
+        ClickHouse server log level. One of: none, fatal, error, warning,
+        information, debug, trace.
+      default: warning
+      type: string
+
+provides:
+  clickhouse:
+    interface: sentry_clickhouse
+    optional: false
+  metrics-endpoint:
+    interface: prometheus_scrape
+    optional: true
+  grafana-dashboard:
+    interface: grafana_dashboard
+    optional: true
+
+requires:
+  logging:
+    interface: loki_push_api
+    optional: true
+
+peers:
+  clickhouse-peers:
+    interface: clickhouse_peers
+
+parts:
+  charm:
+    plugin: uv
+    source: .
+    build-snaps:
+      - astral-uv
+    build-packages:
+      - git

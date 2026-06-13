@@ -1,0 +1,33 @@
+# Charmcraft / Rockcraft build artifacts
+*.charm
+*.rock
+build/
+*.snap
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.tox/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.mypy_cache/
+
+# Charmcraft
+.charmcraft-build*/
+charmcraft-build*.log
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local secrets / scratch
+*.local
+secrets/
+scratch/

@@ -2,27 +2,185 @@
 # See https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/
 type: charm
 name: sentry-k8s
-title: Charm Template
-summary: A very short one-line summary of the charm.
+title: Sentry
+summary: Self-hosted, open-source Sentry error tracking and performance monitoring.
 description: |
-  A single sentence that says what the charm is, concisely and memorably.
+  Sentry is an open-source application-monitoring platform that helps developers
+  find and fix crashes, errors and performance problems in real time.
 
-  A paragraph of one to three short sentences, that describe what the charm does.
+  This charm runs the Sentry application tier on Kubernetes: the web UI and API,
+  the task scheduler and workers, and the fleet of Kafka consumers that ingest
+  events and drive post-processing, alerting and subscriptions. It manages
+  database migrations, generates and safeguards the system secret key, creates
+  the first admin user, and exposes the UI through an ingress.
 
-  A third paragraph that explains what need the charm meets.
+  It integrates with Canonical's PostgreSQL, Redis and Kafka charms for its
+  backends, with the ``sentry-snuba-k8s`` and ``sentry-relay-k8s`` charms for
+  analytics and event intake, and with the Canonical Observability Stack. It is
+  the centrepiece of the ``sentry-operators`` charm set, for anyone self-hosting
+  Sentry the Juju way.
 
-  Finally, a paragraph that describes whom the charm is useful for.
-
-# Documentation:
-# https://documentation.ubuntu.com/charmcraft/stable/howto/build-guides/select-platforms/
 base: ubuntu@24.04
 platforms:
   amd64:
-  arm64:
+
+links:
+  documentation: https://github.com/tonyandrewmeyer/sentry-operators/blob/main/docs/index.md
+  source: https://github.com/tonyandrewmeyer/sentry-operators
+  issues: https://github.com/tonyandrewmeyer/sentry-operators/issues
+  website: https://sentry.io
+  contact: tony.meyer@gmail.com
 
 assumes:
   - juju >= 3.6
   - k8s-api
+
+containers:
+  sentry:
+    resource: sentry-image
+    mounts:
+      - storage: data
+        location: /data
+  taskbroker:
+    resource: taskbroker-image
+    mounts:
+      - storage: taskbroker-data
+        location: /opt/sqlite
+  symbolicator:
+    resource: symbolicator-image
+    mounts:
+      - storage: symbolicator-cache
+        location: /data
+
+resources:
+  sentry-image:
+    type: oci-image
+    description: OCI image for the Sentry application, pinned to 26.5.2.
+    upstream-source: ghcr.io/getsentry/sentry:26.5.2
+  taskbroker-image:
+    type: oci-image
+    description: OCI image for the taskbroker async task queue, pinned to 26.5.2.
+    upstream-source: ghcr.io/getsentry/taskbroker:26.5.2
+  symbolicator-image:
+    type: oci-image
+    description: OCI image for the symbolicator stack-trace symbolication service.
+    upstream-source: ghcr.io/getsentry/symbolicator:26.5.2
+
+storage:
+  data:
+    type: filesystem
+    location: /data
+    minimum-size: 10G
+  taskbroker-data:
+    type: filesystem
+    location: /opt/sqlite
+    minimum-size: 1G
+  symbolicator-cache:
+    type: filesystem
+    location: /data
+    minimum-size: 5G
+
+config:
+  options:
+    feature-complete:
+      description: |
+        Run the full feature set (transactions, metrics, profiling, replays,
+        crons, uptime, feedback and the issue platform) in addition to error
+        tracking. Disable for an errors-only deployment with a smaller footprint.
+      default: true
+      type: boolean
+    event-retention-days:
+      description: How long event data is retained, in days.
+      default: 90
+      type: int
+    taskworker-concurrency:
+      description: Number of concurrent task worker processes.
+      default: 4
+      type: int
+    enable-symbolicator:
+      description: Run the symbolicator service for native/JS stack-trace symbolication.
+      default: true
+      type: boolean
+    smtp-host:
+      description: SMTP relay host for outbound email. Empty disables email.
+      default: ""
+      type: string
+    smtp-port:
+      description: SMTP relay port.
+      default: 587
+      type: int
+    smtp-username:
+      description: SMTP username.
+      default: ""
+      type: string
+    smtp-password:
+      description: SMTP password.
+      default: ""
+      type: string
+    smtp-use-tls:
+      description: Use STARTTLS for SMTP.
+      default: true
+      type: boolean
+    mail-from:
+      description: From-address for outbound email.
+      default: sentry@localhost
+      type: string
+
+actions:
+  create-admin:
+    description: |
+      Create a Sentry superuser. The generated (or provided) password is stored
+      in a Juju secret whose id is returned.
+    params:
+      email:
+        type: string
+        description: Email address of the admin user.
+      password:
+        type: string
+        description: Password (a random one is generated if omitted).
+    required:
+      - email
+    additionalProperties: false
+
+provides:
+  sentry-relay:
+    interface: sentry_relay
+    optional: true
+  metrics-endpoint:
+    interface: prometheus_scrape
+    optional: true
+  grafana-dashboard:
+    interface: grafana_dashboard
+    optional: true
+
+requires:
+  database:
+    interface: postgresql_client
+    limit: 1
+    optional: false
+  kafka:
+    interface: kafka_client
+    limit: 1
+    optional: false
+  redis:
+    interface: redis
+    limit: 1
+    optional: false
+  snuba:
+    interface: sentry_snuba
+    limit: 1
+    optional: false
+  ingress:
+    interface: ingress
+    limit: 1
+    optional: true
+  logging:
+    interface: loki_push_api
+    optional: true
+
+peers:
+  sentry-peers:
+    interface: sentry_peers
 
 parts:
   charm:
@@ -30,42 +188,5 @@ parts:
     source: .
     build-snaps:
       - astral-uv
-
-# (Optional) Configuration options for the charm
-# This config section defines charm config options, and populates the Configure
-# tab on Charmhub.
-# More information on this section at:
-# https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/#config
-# General configuration documentation:
-# https://documentation.ubuntu.com/juju/3.6/reference/configuration/#application-configuration
-config:
-  options:
-    # An example config option to customise the log level of the workload
-    log-level:
-      description: |
-        Configures the log level of gunicorn.
-
-        Acceptable values are: "info", "debug", "warning", "error" and "critical"
-      default: "info"
-      type: string
-
-# Your workload's containers.
-# https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/#containers
-containers:
-  some-container:
-    resource: some-container-image
-
-# This field populates the Resources tab on Charmhub.
-# https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/#resources
-resources:
-  # An OCI image resource for each container listed above.
-  # You may remove this if your charm will run without a workload sidecar container.
-  some-container-image:
-    type: oci-image
-    description: OCI image for the 'some-container' container
-    # The upstream-source field is ignored by Charmcraft and Juju, but it can be
-    # useful to developers in identifying the source of the OCI image.  It is also
-    # used by the 'canonical/charming-actions' GitHub action for automated releases.
-    # The test_deploy function in tests/integration/test_charm.py reads upstream-source
-    # to determine which OCI image to use when running the charm's integration tests.
-    upstream-source: some-repo/some-image:some-tag
+    build-packages:
+      - git

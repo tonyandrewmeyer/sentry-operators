@@ -13,7 +13,9 @@ requires-python = ">=3.10"
 # 'charm-libs' block in charmcraft.yaml, run `charmcraft fetch-libs` to download the libraries,
 # then inspect the libraries for dependencies specified in PYDEPS. List those dependencies here.
 dependencies = [
-    "ops~=3.7"
+    "ops~=3.7",
+    # Required by the fetched charms.traefik_k8s.v2.ingress library (PYDEPS).
+    "pydantic>=2",
 ]
 
 [dependency-groups]

@@ -1,95 +1,137 @@
-# Copyright 2026 Ubuntu
+# Copyright 2026 Tony Meyer
 # See LICENSE file for licensing details.
-#
-# To learn more about testing, see https://documentation.ubuntu.com/ops/latest/explanation/testing/
+
+"""Unit tests for the sentry-k8s charm."""
 
 import ops
 import pytest
 from ops import testing
 
-from charm import SERVICE_NAME, SentryK8SCharm
+import sentry
+from charm import SENTRY_CONTAINER, SentryK8SCharm
 
-CHECK_NAME = "service-ready"  # Name of Pebble check in the mock workload container.
+# Exec matches by command prefix, so ["sentry"] covers both `sentry upgrade`
+# and `sentry createuser`.
+SENTRY_EXEC = testing.Exec(["sentry"], return_code=0, stdout="")
 
-# A minimal Pebble layer for our testing.Container objects.
-# Our charm doesn't retrieve the service command or the check URL
-# from Pebble, so this layer doesn't need a real command or URL.
-MOCK_LAYER = ops.pebble.Layer(
-    {
-        "services": {
-            SERVICE_NAME: {
-                "override": "replace",
-                "command": "mock-command",
-                "startup": "enabled",
-            }
-        },
-        "checks": {
-            CHECK_NAME: {
-                "override": "replace",
-                "level": "ready",
-                "threshold": 3,
-                "startup": "enabled",
-                "http": {
-                    "url": "http://localhost:1234/mock-endpoint",
-                },
-            }
-        },
+
+@pytest.fixture
+def ctx():
+    return testing.Context(SentryK8SCharm)
+
+
+def _containers(exec_sentry=True):
+    sentry_c = testing.Container(
+        SENTRY_CONTAINER, can_connect=True, execs={SENTRY_EXEC} if exec_sentry else set()
+    )
+    return {
+        sentry_c,
+        testing.Container("taskbroker", can_connect=True),
+        testing.Container("symbolicator", can_connect=True),
     }
-)
 
 
-def mock_get_version():
-    """Get a mock version string without executing the workload code."""
-    return "1.0.0"
-
-
-def test_pebble_ready(monkeypatch: pytest.MonkeyPatch):
-    """Test that the charm has the correct state after handling the pebble-ready event."""
-    # Arrange:
-    ctx = testing.Context(SentryK8SCharm)
-    check_in = testing.CheckInfo(
-        CHECK_NAME,
-        level=ops.pebble.CheckLevel.READY,
-        status=ops.pebble.CheckStatus.UP,  # Simulate the Pebble check passing.
+def _wire(monkeypatch):
+    monkeypatch.setattr(
+        SentryK8SCharm,
+        "_postgres",
+        lambda self: sentry.PostgresInfo("pg", "5432", "sentry", "u", "p"),
     )
-    container_in = testing.Container(
-        "some-container",
-        can_connect=True,
-        layers={"base": MOCK_LAYER},
-        service_statuses={SERVICE_NAME: ops.pebble.ServiceStatus.INACTIVE},
-        check_infos={check_in},
+    monkeypatch.setattr(
+        SentryK8SCharm, "_kafka", lambda self: sentry.KafkaInfo("kafka:9092", "ku", "kp")
     )
-    state_in = testing.State(containers={container_in})
-    monkeypatch.setattr("charm.sentry.get_version", mock_get_version)
-
-    # Act:
-    state_out = ctx.run(ctx.on.pebble_ready(container_in), state_in)
-
-    # Assert:
-    container_out = state_out.get_container(container_in.name)
-    assert container_out.service_statuses[SERVICE_NAME] == ops.pebble.ServiceStatus.ACTIVE
-    assert state_out.workload_version is not None
-    assert state_out.unit_status == testing.ActiveStatus()
+    monkeypatch.setattr(SentryK8SCharm, "_redis", lambda self: sentry.RedisInfo("redis", 6379))
+    monkeypatch.setattr("charm.SnubaRequirer.url", property(lambda self: "http://snuba:1218"))
 
 
-def test_pebble_ready_service_not_ready():
-    """Test that the charm raises an error if the workload isn't ready after Pebble starts it."""
-    # Arrange:
-    ctx = testing.Context(SentryK8SCharm)
-    check_in = testing.CheckInfo(
-        CHECK_NAME,
-        level=ops.pebble.CheckLevel.READY,
-        status=ops.pebble.CheckStatus.DOWN,  # Simulate the Pebble check failing.
+def test_blocked_without_integrations(ctx):
+    state_in = testing.State(containers=_containers(exec_sentry=False), leader=True)
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+    assert isinstance(state_out.unit_status, testing.BlockedStatus)
+    for backend in ("database", "kafka", "redis", "snuba"):
+        assert backend in state_out.unit_status.message
+
+
+def test_secret_key_generated_and_stored(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(containers=_containers(), relations={peer}, leader=True)
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    peer_out = state_out.get_relation(peer.id)
+    assert peer_out.local_app_data.get("secret-key-id")
+    assert len(state_out.secrets) == 1
+
+
+def test_services_started_when_ready(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(
+        containers=_containers(),
+        relations={peer},
+        leader=True,
+        config={"feature-complete": False},
     )
-    container_in = testing.Container(
-        "some-container",
-        can_connect=True,
-        layers={"base": MOCK_LAYER},
-        service_statuses={SERVICE_NAME: ops.pebble.ServiceStatus.INACTIVE},
-        check_infos={check_in},
-    )
-    state_in = testing.State(containers={container_in})
 
-    # Act & assert:
-    with pytest.raises(testing.errors.UncaughtCharmError):
-        ctx.run(ctx.on.pebble_ready(container_in), state_in)
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    services = state_out.get_container(SENTRY_CONTAINER).service_statuses
+    assert services["web"] == ops.pebble.ServiceStatus.ACTIVE
+    assert "events-consumer" in services
+    assert "transactions-consumer" not in services
+
+
+def test_taskbroker_and_symbolicator_started(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(containers=_containers(), relations={peer}, leader=True)
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert (
+        state_out.get_container("taskbroker").service_statuses["taskbroker"]
+        == ops.pebble.ServiceStatus.ACTIVE
+    )
+    assert (
+        state_out.get_container("symbolicator").service_statuses["symbolicator"]
+        == ops.pebble.ServiceStatus.ACTIVE
+    )
+
+
+def test_sentry_conf_pushed(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(containers=_containers(), relations={peer}, leader=True)
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    fs = state_out.get_container(SENTRY_CONTAINER).get_filesystem(ctx)
+    conf = (fs / "etc/sentry/sentry.conf.py").read_text()
+    assert "DATABASES" in conf
+    assert "SCRAM-SHA-512" in conf
+
+
+def test_publishes_web_url_to_relay(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    relay_rel = testing.Relation("sentry-relay")
+    state_in = testing.State(containers=_containers(), relations={peer, relay_rel}, leader=True)
+
+    state_out = ctx.run(ctx.on.relation_joined(relay_rel), state_in)
+
+    data = state_out.get_relation(relay_rel.id).local_app_data
+    assert data["web-url"].startswith("http://sentry-k8s.")
+    assert data["web-url"].endswith(":9000")
+
+
+def test_create_admin_action(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(containers=_containers(), relations={peer}, leader=True)
+
+    ctx.run(ctx.on.action("create-admin", params={"email": "admin@example.com"}), state_in)
+
+    assert ctx.action_results is not None
+    assert ctx.action_results["email"] == "admin@example.com"
+    assert "password-secret" in ctx.action_results

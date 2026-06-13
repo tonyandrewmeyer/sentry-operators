@@ -1,35 +1,74 @@
-# Copyright 2026 Ubuntu
+# Copyright 2026 Tony Meyer
 # See LICENSE file for licensing details.
 #
 # The integration tests use the Jubilant library. See https://documentation.ubuntu.com/jubilant/
-# To learn more about testing, see https://documentation.ubuntu.com/ops/latest/explanation/testing/
 
 import logging
 import pathlib
 
 import jubilant
-import pytest
 import yaml
 
 logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(pathlib.Path("charmcraft.yaml").read_text())
+APP = "sentry-k8s"
+
+POSTGRES = "postgresql-k8s"
+KAFKA = "kafka-k8s"
+REDIS = "redis-k8s"
+CLICKHOUSE = "clickhouse-k8s"
+SNUBA = "sentry-snuba-k8s"
 
 
-def test_deploy(charm: pathlib.Path, juju: jubilant.Juju):
-    """Deploy the charm under test."""
-    resources = {
-        "some-container-image": METADATA["resources"]["some-container-image"]["upstream-source"]
-    }
-    juju.deploy(charm.resolve(), app="sentry-k8s", resources=resources)
-    juju.wait(jubilant.all_active)
+def _resources():
+    return {name: spec["upstream-source"] for name, spec in METADATA["resources"].items()}
 
 
-# If you implement sentry.get_version in the charm source,
-# remove the @pytest.mark.skip line to enable this test.
-# Alternatively, remove this test if you don't need it.
-@pytest.mark.skip(reason="sentry.get_version is not implemented")
-def test_workload_version_is_set(charm: pathlib.Path, juju: jubilant.Juju):
-    """Check that the correct version of the workload is running."""
-    version = juju.status().apps["sentry-k8s"].version
-    assert version == "3.14"  # Replace 3.14 by the expected version of the workload.
+def test_deploy_full_stack(charm: pathlib.Path, juju: jubilant.Juju):
+    """Deploy Sentry with its whole backing stack and reach active/idle."""
+    juju.deploy(charm.resolve(), app=APP, resources=_resources(), config={"feature-complete": False})
+
+    # Data backends (Canonical charms).
+    juju.deploy(POSTGRES, channel="14/stable", trust=True)
+    juju.deploy(
+        KAFKA, channel="3/stable", config={"roles": "broker,controller"}, trust=True
+    )
+    juju.deploy(REDIS, channel="latest/edge", trust=True)
+    # Kafka must accept Sentry's large (50 MB) messages.
+    juju.config(KAFKA, {"message-max-bytes": "52428800"})
+    # Postgres extensions Sentry's migrations expect.
+    juju.config(POSTGRES, {"plugin_citext_enable": "true", "plugin_pg_trgm_enable": "true"})
+
+    # Analytics tier (this repo's charms).
+    juju.deploy(CLICKHOUSE, channel="latest/edge", trust=True)
+    juju.deploy(SNUBA, channel="latest/edge", config={"feature-complete": False}, trust=True)
+    juju.integrate(SNUBA, CLICKHOUSE)
+    juju.integrate(SNUBA, KAFKA)
+    juju.integrate(SNUBA, REDIS)
+
+    # Sentry's own integrations.
+    juju.integrate(APP, POSTGRES)
+    juju.integrate(APP, KAFKA)
+    juju.integrate(APP, REDIS)
+    juju.integrate(APP, SNUBA)
+
+    juju.wait(jubilant.all_active, timeout=3600, delay=15)
+
+
+def test_create_admin_action(juju: jubilant.Juju):
+    """The create-admin action provisions a superuser."""
+    task = juju.run(f"{APP}/0", "create-admin", {"email": "admin@example.com"})
+    assert task.results["email"] == "admin@example.com"
+    assert task.results.get("password-secret")
+
+
+def test_web_health(juju: jubilant.Juju):
+    """Sentry web answers its health endpoint."""
+    check = (
+        "import urllib.request, sys; "
+        "sys.exit(0 if urllib.request.urlopen('http://localhost:9000/_health/').status == 200 "
+        "else 1)"
+    )
+    result = juju.exec(f"python3 -c {check!r}", unit=f"{APP}/0")
+    assert result.return_code == 0

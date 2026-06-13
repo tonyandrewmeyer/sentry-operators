@@ -2,27 +2,95 @@
 # See https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/
 type: charm
 name: sentry-relay-k8s
-title: Charm Template
-summary: A very short one-line summary of the charm.
+title: Relay for Sentry
+summary: Relay, the event-intake proxy of self-hosted Sentry.
 description: |
-  A single sentence that says what the charm is, concisely and memorably.
+  Relay is the service that sits at the front of self-hosted Sentry and accepts
+  incoming events from SDKs before they reach the rest of the system. It is the
+  first thing an event hits, so it has to be fast, resilient and able to shed
+  load without losing data.
 
-  A paragraph of one to three short sentences, that describe what the charm does.
+  This charm runs Relay in managed mode: it authenticates against the Sentry
+  web upstream, normalises and validates incoming payloads, applies rate limits
+  and inbound filters, scrubs sensitive data, and forwards the processed events
+  onto Kafka for the rest of the pipeline to consume. It keeps a small amount of
+  state in Redis (project configs, rate-limit counters) so that intake stays
+  responsive even when the upstream is busy.
 
-  A third paragraph that explains what need the charm meets.
+  It exists so the event-intake tier of Sentry runs as its own scalable,
+  observable Juju application that can be placed close to where events arrive
+  and scaled independently of the storage and query tiers. Relay generates a
+  keypair on first start and registers itself with the Sentry upstream; the
+  charm stores that keypair in a Juju secret so it survives restarts.
 
-  Finally, a paragraph that describes whom the charm is useful for.
+  It is useful to anyone running self-hosted Sentry on Kubernetes with Juju.
 
-# Documentation:
-# https://documentation.ubuntu.com/charmcraft/stable/howto/build-guides/select-platforms/
 base: ubuntu@24.04
 platforms:
   amd64:
-  arm64:
+
+links:
+  documentation: https://github.com/tonyandrewmeyer/sentry-operators/blob/main/docs/index.md
+  source: https://github.com/tonyandrewmeyer/sentry-operators
+  issues: https://github.com/tonyandrewmeyer/sentry-operators/issues
+  website: https://github.com/getsentry/relay
+  contact: tony.meyer@gmail.com
 
 assumes:
   - juju >= 3.6
   - k8s-api
+
+containers:
+  relay:
+    resource: relay-image
+
+resources:
+  relay-image:
+    type: oci-image
+    description: OCI image for Relay, pinned to self-hosted Sentry 26.5.2.
+    upstream-source: ghcr.io/getsentry/relay:26.5.2
+
+config:
+  options:
+    log-level:
+      description: |
+        Relay's log level. Acceptable values are "trace", "debug", "info",
+        "warn" and "error".
+      default: "info"
+      type: string
+
+provides:
+  metrics-endpoint:
+    interface: prometheus_scrape
+    optional: true
+  grafana-dashboard:
+    interface: grafana_dashboard
+    optional: true
+
+requires:
+  kafka:
+    interface: kafka_client
+    limit: 1
+    optional: false
+  redis:
+    interface: redis
+    limit: 1
+    optional: false
+  sentry:
+    interface: sentry_relay
+    limit: 1
+    optional: false
+  ingress:
+    interface: ingress
+    limit: 1
+    optional: true
+  logging:
+    interface: loki_push_api
+    optional: true
+
+peers:
+  relay-peers:
+    interface: relay_peers
 
 parts:
   charm:
@@ -30,42 +98,5 @@ parts:
     source: .
     build-snaps:
       - astral-uv
-
-# (Optional) Configuration options for the charm
-# This config section defines charm config options, and populates the Configure
-# tab on Charmhub.
-# More information on this section at:
-# https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/#config
-# General configuration documentation:
-# https://documentation.ubuntu.com/juju/3.6/reference/configuration/#application-configuration
-config:
-  options:
-    # An example config option to customise the log level of the workload
-    log-level:
-      description: |
-        Configures the log level of gunicorn.
-
-        Acceptable values are: "info", "debug", "warning", "error" and "critical"
-      default: "info"
-      type: string
-
-# Your workload's containers.
-# https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/#containers
-containers:
-  some-container:
-    resource: some-container-image
-
-# This field populates the Resources tab on Charmhub.
-# https://documentation.ubuntu.com/charmcraft/stable/reference/files/charmcraft-yaml-file/#resources
-resources:
-  # An OCI image resource for each container listed above.
-  # You may remove this if your charm will run without a workload sidecar container.
-  some-container-image:
-    type: oci-image
-    description: OCI image for the 'some-container' container
-    # The upstream-source field is ignored by Charmcraft and Juju, but it can be
-    # useful to developers in identifying the source of the OCI image.  It is also
-    # used by the 'canonical/charming-actions' GitHub action for automated releases.
-    # The test_deploy function in tests/integration/test_charm.py reads upstream-source
-    # to determine which OCI image to use when running the charm's integration tests.
-    upstream-source: some-repo/some-image:some-tag
+    build-packages:
+      - git

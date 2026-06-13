@@ -231,9 +231,21 @@ def build_environment(
 
 
 def bootstrap_command() -> list[str]:
-    """Return the one-shot command that creates Kafka topics and ClickHouse schema.
+    """Return the command that creates Snuba's Kafka topics.
 
-    ``snuba bootstrap --force`` is idempotent: topics and migrations that already
-    exist are left untouched, so it is safe to re-run on upgrade.
+    ``snuba bootstrap --force`` creates the Kafka topics but does NOT apply the
+    ClickHouse schema migrations -- that is a separate step (see
+    :func:`migrate_command`). It is idempotent, so it is safe to re-run.
     """
-    return ["snuba", "bootstrap", "--force"]
+    return ["snuba", "bootstrap", "--force", "--no-migrate"]
+
+
+def migrate_command() -> list[str]:
+    """Return the command that applies Snuba's ClickHouse schema migrations.
+
+    ``snuba bootstrap`` alone leaves every migration unapplied, so without this
+    the storage tables (errors, outcomes, ...) never exist and event data is
+    never written to ClickHouse. Idempotent: already-applied migrations are
+    skipped.
+    """
+    return ["snuba", "migrations", "migrate", "--force"]

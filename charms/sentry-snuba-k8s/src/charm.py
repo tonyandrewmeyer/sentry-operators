@@ -162,14 +162,20 @@ class SentrySnubaK8SCharm(ops.CharmBase):
     ) -> None:
         """Create Kafka topics and ClickHouse schema (idempotent)."""
         env = self._environment(clickhouse, kafka, redis)
-        logger.info("Running snuba bootstrap")
+        logger.info("Running snuba bootstrap (Kafka topics)")
         try:
-            process = self.container.exec(
+            self.container.exec(
                 sentry_snuba.bootstrap_command(), environment=env, timeout=600
-            )
-            process.wait_output()
+            ).wait_output()
         except ops.pebble.ExecError as exc:
             logger.warning("snuba bootstrap failed (will retry): %s", exc)
+        logger.info("Running snuba migrations (ClickHouse schema)")
+        try:
+            self.container.exec(
+                sentry_snuba.migrate_command(), environment=env, timeout=600
+            ).wait_output()
+        except ops.pebble.ExecError as exc:
+            logger.warning("snuba migrations failed (will retry): %s", exc)
 
     def _pebble_layer(
         self, clickhouse: ClickHouseConnection, kafka: KafkaConnection, redis: tuple[str, int]

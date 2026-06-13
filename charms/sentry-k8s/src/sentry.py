@@ -423,13 +423,78 @@ def render_symbolicator_config() -> str:
 
 
 def upgrade_command() -> list[str]:
-    """Return the migration command (Postgres migrations + Sentry's Kafka topics)."""
-    return ["sentry", "upgrade", "--noinput", "--create-kafka-topics"]
+    """Return the database migration command (Postgres migrations).
+
+    We deliberately omit ``--create-kafka-topics``: in Sentry that flag does not
+    actually create topics, it only *waits* for them to appear, relying on the
+    broker's ``auto.create.topics.enable``. Canonical kafka-k8s disables
+    auto-creation, so the charm creates the topics itself (see
+    :func:`create_topics_command`).
+    """
+    return ["sentry", "upgrade", "--noinput"]
+
+
+# Sentry expects ~120 Kafka topics (ingest-*, taskworker-*, outcomes-*, ...) to
+# exist. Upstream relies on the broker auto-creating them; kafka-k8s does not,
+# so we create them explicitly from Sentry's own topic registry, using the same
+# admin client configuration (and therefore the same SASL credentials) Sentry
+# would use itself. Replication follows the broker count (capped at 3).
+_CREATE_TOPICS_SCRIPT = """
+from sentry.runner import configure
+configure()
+from sentry_kafka_schemas import list_topics
+from sentry.utils.kafka_config import (
+    get_topic_definition_from_name,
+    get_kafka_admin_cluster_options,
+)
+from confluent_kafka.admin import AdminClient, NewTopic
+
+by_cluster = {}
+for topic in list_topics():
+    defn = get_topic_definition_from_name(topic)
+    by_cluster.setdefault(defn["cluster"], set()).add(defn["real_topic_name"])
+
+for cluster, names in by_cluster.items():
+    admin = AdminClient(get_kafka_admin_cluster_options(cluster))
+    replication = min(3, len(admin.list_topics(timeout=30).brokers)) or 1
+    futures = admin.create_topics(
+        [NewTopic(n, num_partitions=1, replication_factor=replication) for n in sorted(names)]
+    )
+    for name, future in futures.items():
+        try:
+            future.result()
+        except Exception as exc:  # noqa: BLE001
+            if "already exists" not in str(exc).lower():
+                raise
+"""
+
+
+def create_topics_command() -> list[str]:
+    """Create every Kafka topic Sentry needs, idempotently.
+
+    Runs in the Sentry container (which ships ``sentry_kafka_schemas`` and
+    ``confluent_kafka``) with the same environment as the migration, so the
+    admin client picks up the configured brokers and SASL credentials.
+    """
+    return ["python3", "-c", _CREATE_TOPICS_SCRIPT]
 
 
 def createuser_command(*, email: str, password: str, superuser: bool = True) -> list[str]:
-    """Command to create the first admin user."""
-    cmd = ["sentry", "createuser", "--email", email, "--password", password, "--no-input"]
+    """Command to create (or update) the first admin user.
+
+    ``--force-update`` makes the action idempotent: re-running it for an
+    existing email resets that user rather than failing.
+    """
+    cmd = [
+        "sentry",
+        "createuser",
+        "--email",
+        email,
+        "--password",
+        password,
+        "--no-input",
+        "--force-update",
+    ]
     if superuser:
         cmd.append("--superuser")
     return cmd

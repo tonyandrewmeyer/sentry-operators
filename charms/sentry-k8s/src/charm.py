@@ -264,7 +264,14 @@ class SentryK8SCharm(ops.CharmBase):
             secret_key=secret_key,
             event_retention_days=int(self.config["event-retention-days"]),  # type: ignore[arg-type]
         )
-        logger.info("Running sentry upgrade (database migrations + Kafka topics)")
+        logger.info("Creating Sentry's Kafka topics")
+        try:
+            self.sentry_container.exec(
+                sentry.create_topics_command(), environment=env, timeout=300
+            ).wait_output()
+        except ops.pebble.ExecError as exc:
+            logger.warning("Kafka topic creation failed (will retry): %s", exc)
+        logger.info("Running sentry upgrade (database migrations)")
         try:
             process = self.sentry_container.exec(
                 sentry.upgrade_command(), environment=env, timeout=900

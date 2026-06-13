@@ -1,0 +1,41 @@
+# Pre-commit hooks for the Sentry charm monorepo.
+#
+#   pip install pre-commit   # or: uv tool install pre-commit
+#   pre-commit install       # enable the git hook
+#
+# Commits are blocked if formatting, linting, spelling, or any charm's unit
+# tests fail. Run on demand with `pre-commit run --all-files`.
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.10
+    hooks:
+      # Auto-fixable lint issues, then formatting. Each charm's own pyproject
+      # ruff config is picked up automatically (nearest config wins). Vendored
+      # charm libraries are excluded, matching what `tox -e lint` checks.
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix]
+        exclude: '(^|/)(lib/charms/|\.reference/)'
+      - id: ruff-format
+        name: ruff (format)
+        exclude: '(^|/)(lib/charms/|\.reference/)'
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        additional_dependencies: ["tomli"]
+        exclude: '(^|/)(lib/charms/|.*\.svg$|uv\.lock$|\.reference/|transcripts/|demos/.*\.png$)'
+
+  - repo: local
+    hooks:
+      - id: charm-unit-tests
+        name: charm unit tests
+        entry: scripts/run-unit-tests.sh
+        language: script
+        # Run once (not per-file) whenever any Python changes; the script
+        # tests every charm itself.
+        pass_filenames: false
+        types: [python]

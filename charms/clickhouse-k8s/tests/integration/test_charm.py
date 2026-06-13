@@ -17,9 +17,7 @@ APP = "clickhouse-k8s"
 
 def test_deploy(charm: pathlib.Path, juju: jubilant.Juju):
     """Deploy the charm and wait for it to go active."""
-    resources = {
-        "clickhouse-image": METADATA["resources"]["clickhouse-image"]["upstream-source"]
-    }
+    resources = {"clickhouse-image": METADATA["resources"]["clickhouse-image"]["upstream-source"]}
     juju.deploy(charm.resolve(), app=APP, resources=resources)
     juju.wait(jubilant.all_active, timeout=900)
 

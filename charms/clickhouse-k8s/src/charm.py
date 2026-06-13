@@ -10,6 +10,11 @@ import logging
 
 import ops
 from charms.clickhouse_k8s.v0.clickhouse import ClickHouseProvider
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.loki_k8s.v1.loki_push_api import LogForwarder
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
+from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
+from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
 
 import clickhouse
 
@@ -19,6 +24,7 @@ CONTAINER = "clickhouse"
 SERVICE = "clickhouse-server"
 
 
+@trace_charm(tracing_endpoint="_charm_tracing_endpoint")
 class ClickHouseK8SCharm(ops.CharmBase):
     """Run and operate ClickHouse for Snuba."""
 
@@ -26,6 +32,21 @@ class ClickHouseK8SCharm(ops.CharmBase):
         super().__init__(framework)
         self.container = self.unit.get_container(CONTAINER)
         self.clickhouse = ClickHouseProvider(self)
+
+        # Observability: forward Pebble logs to Loki, expose ClickHouse's native
+        # Prometheus metrics, ship a Grafana dashboard, and trace the charm.
+        self._logging = LogForwarder(self, relation_name="logging")
+        self._metrics = MetricsEndpointProvider(
+            self,
+            relation_name="metrics-endpoint",
+            jobs=[{"static_configs": [{"targets": [f"*:{clickhouse.METRICS_PORT}"]}]}],
+        )
+        self._grafana_dashboards = GrafanaDashboardProvider(
+            self, relation_name="grafana-dashboard"
+        )
+        self._charm_tracing = TracingEndpointRequirer(
+            self, relation_name="charm-tracing", protocols=["otlp_http"]
+        )
 
         # A single reconcile handler keeps the workload and relation data in
         # sync regardless of which event woke the charm.
@@ -41,6 +62,13 @@ class ClickHouseK8SCharm(ops.CharmBase):
 
     def _reconcile(self, _: ops.EventBase) -> None:
         """Make the running workload match the charm's configuration."""
+        # Open the workload ports so the `<app>.<model>.svc` ClusterIP service
+        # routes to them; a k8s Service only forwards ports the charm opens, so
+        # without this cross-charm connections (e.g. Snuba -> ClickHouse:9000)
+        # never reach the workload.
+        self.unit.set_ports(
+            clickhouse.HTTP_PORT, clickhouse.NATIVE_PORT, clickhouse.METRICS_PORT
+        )
         if not self.container.can_connect():
             return
         self._push_config()
@@ -109,6 +137,13 @@ class ClickHouseK8SCharm(ops.CharmBase):
                 }
             },
         }
+
+    @property
+    def _charm_tracing_endpoint(self) -> str | None:
+        """The Tempo otlp_http endpoint for charm self-tracing, if available."""
+        if self._charm_tracing.is_ready():
+            return self._charm_tracing.get_endpoint("otlp_http")
+        return None
 
     def _on_collect_status(self, event: ops.CollectStatusEvent) -> None:
         if not self.container.can_connect():

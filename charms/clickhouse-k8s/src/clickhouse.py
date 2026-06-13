@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 HTTP_PORT = 8123
 NATIVE_PORT = 9000
+# Port on which ClickHouse serves its native Prometheus metrics endpoint.
+METRICS_PORT = 9363
 
 # Where the charm pushes its drop-in configuration inside the workload container.
 SERVER_CONFIG_PATH = "/etc/clickhouse-server/config.d/sentry.xml"
@@ -59,6 +61,13 @@ def render_server_config(*, max_memory_ratio: float, log_level: str) -> str:
         <console>true</console>
     </logger>
     <max_server_memory_usage_to_ram_ratio>{max_memory_ratio}</max_server_memory_usage_to_ram_ratio>
+    <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>{METRICS_PORT}</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+    </prometheus>
     <merge_tree>
         <enable_mixed_granularity_parts>1</enable_mixed_granularity_parts>
         <max_suspicious_broken_parts>100</max_suspicious_broken_parts>

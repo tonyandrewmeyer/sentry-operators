@@ -12,7 +12,11 @@ import logging
 import ops
 from charms.clickhouse_k8s.v0.clickhouse import ClickHouseConnection, ClickHouseRequirer
 from charms.data_platform_libs.v0.data_interfaces import KafkaRequires
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.sentry_snuba_k8s.v0.snuba import SnubaProvider
+from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
+from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
 
 import sentry_snuba
 
@@ -35,6 +39,7 @@ class KafkaConnection:
     password: str = ""
 
 
+@trace_charm(tracing_endpoint="_charm_tracing_endpoint")
 class SentrySnubaK8SCharm(ops.CharmBase):
     """Run and operate Snuba (API + consumers) over ClickHouse."""
 
@@ -46,6 +51,17 @@ class SentrySnubaK8SCharm(ops.CharmBase):
             self, relation_name=KAFKA_RELATION, topic=KAFKA_TOPIC, extra_user_roles="admin"
         )
         self.snuba = SnubaProvider(self)
+
+        # Observability: forward Pebble logs to Loki, ship a log-based Grafana
+        # dashboard, and trace the charm. Snuba emits statsd (not Prometheus)
+        # metrics, so there is no metrics-endpoint scrape here.
+        self._logging = LogForwarder(self, relation_name="logging")
+        self._grafana_dashboards = GrafanaDashboardProvider(
+            self, relation_name="grafana-dashboard"
+        )
+        self._charm_tracing = TracingEndpointRequirer(
+            self, relation_name="charm-tracing", protocols=["otlp_http"]
+        )
 
         for event in (
             self.on[CONTAINER].pebble_ready,
@@ -105,6 +121,10 @@ class SentrySnubaK8SCharm(ops.CharmBase):
     # -- reconcile ------------------------------------------------------------
 
     def _reconcile(self, _: ops.EventBase) -> None:
+        # Open the API port so the `<app>.<model>.svc` ClusterIP service routes
+        # to it (a k8s Service only forwards ports the charm opens); without
+        # this, Sentry cannot reach the Snuba API.
+        self.unit.set_ports(sentry_snuba.API_PORT)
         if not self.container.can_connect():
             return
         clickhouse = self.clickhouse.get_connection()
@@ -186,6 +206,15 @@ class SentrySnubaK8SCharm(ops.CharmBase):
     def _publish_url(self) -> None:
         url = f"http://{self.app.name}.{self.model.name}.svc.cluster.local:{sentry_snuba.API_PORT}"
         self.snuba.publish(url=url)
+
+    # -- tracing --------------------------------------------------------------
+
+    @property
+    def _charm_tracing_endpoint(self) -> str | None:
+        """The Tempo otlp_http endpoint for charm self-tracing, if available."""
+        if self._charm_tracing.is_ready():
+            return self._charm_tracing.get_endpoint("otlp_http")
+        return None
 
     # -- status ---------------------------------------------------------------
 

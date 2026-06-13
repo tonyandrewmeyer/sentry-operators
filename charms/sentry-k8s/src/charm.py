@@ -11,8 +11,12 @@ import secrets
 
 import ops
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires, KafkaRequires
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
+from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.sentry_k8s.v0.sentry_relay import SentryRelayProvider
 from charms.sentry_snuba_k8s.v0.snuba import SnubaRequirer
+from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
+from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
 from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
 
 import sentry
@@ -33,6 +37,7 @@ KAFKA_TOPIC = "sentry"
 SECRET_LABEL = "sentry-secret-key"
 
 
+@trace_charm(tracing_endpoint="_charm_tracing_endpoint")
 class SentryK8SCharm(ops.CharmBase):
     """Operate the Sentry application tier."""
 
@@ -41,6 +46,17 @@ class SentryK8SCharm(ops.CharmBase):
         self.sentry_container = self.unit.get_container(SENTRY_CONTAINER)
         self.taskbroker_container = self.unit.get_container(TASKBROKER_CONTAINER)
         self.symbolicator_container = self.unit.get_container(SYMBOLICATOR_CONTAINER)
+
+        # Observability: forward all containers' Pebble logs to Loki, ship a
+        # log-based Grafana dashboard, and trace the charm. Sentry emits statsd
+        # (not Prometheus) metrics, so there is no metrics-endpoint scrape here.
+        self._logging = LogForwarder(self, relation_name="logging")
+        self._grafana_dashboards = GrafanaDashboardProvider(
+            self, relation_name="grafana-dashboard"
+        )
+        self._charm_tracing = TracingEndpointRequirer(
+            self, relation_name="charm-tracing", protocols=["otlp_http"]
+        )
 
         self.database = DatabaseRequires(
             self, relation_name=DATABASE_RELATION, database_name=DATABASE_NAME
@@ -153,6 +169,12 @@ class SentryK8SCharm(ops.CharmBase):
     # -- reconcile ------------------------------------------------------------
 
     def _reconcile(self, _: ops.EventBase) -> None:
+        # Open the web port so the `<app>.<model>.svc` ClusterIP service routes
+        # to it (a k8s Service only forwards ports the charm opens); Relay and
+        # ingress both connect to web:9000. The taskbroker (50051) and
+        # symbolicator (3021) ports stay closed — they are reached over
+        # localhost within the pod only.
+        self.unit.set_ports(sentry.WEB_PORT)
         if not self.sentry_container.can_connect():
             return
         postgres = self._postgres()
@@ -378,6 +400,15 @@ class SentryK8SCharm(ops.CharmBase):
             {"email": email, "password": password}, label=f"sentry-admin-{email}"
         )
         event.set_results({"email": email, "password-secret": secret.id})
+
+    # -- tracing --------------------------------------------------------------
+
+    @property
+    def _charm_tracing_endpoint(self) -> str | None:
+        """The Tempo otlp_http endpoint for charm self-tracing, if available."""
+        if self._charm_tracing.is_ready():
+            return self._charm_tracing.get_endpoint("otlp_http")
+        return None
 
     # -- status ---------------------------------------------------------------
 

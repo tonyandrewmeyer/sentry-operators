@@ -11,7 +11,10 @@ import logging
 
 import ops
 from charms.data_platform_libs.v0.data_interfaces import KafkaRequires
+from charms.loki_k8s.v1.loki_push_api import LogForwarder
 from charms.sentry_k8s.v0.sentry_relay import SentryRelayRequirer
+from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
+from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
 from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
 
 import sentry_relay
@@ -42,6 +45,7 @@ class KafkaConnection:
     password: str = ""
 
 
+@trace_charm(tracing_endpoint="_charm_tracing_endpoint")
 class SentryRelayK8SCharm(ops.CharmBase):
     """Run and operate Relay, the Sentry event-intake proxy."""
 
@@ -53,6 +57,13 @@ class SentryRelayK8SCharm(ops.CharmBase):
         )
         self.sentry = SentryRelayRequirer(self)
         self.ingress = IngressPerAppRequirer(self, port=sentry_relay.PORT, strip_prefix=True)
+
+        # Observability: forward Pebble logs to Loki and trace the charm. Relay
+        # emits statsd (not Prometheus) metrics, so there is no scrape here.
+        self._logging = LogForwarder(self, relation_name="logging")
+        self._charm_tracing = TracingEndpointRequirer(
+            self, relation_name="charm-tracing", protocols=["otlp_http"]
+        )
 
         for event in (
             self.on[CONTAINER].pebble_ready,
@@ -147,6 +158,10 @@ class SentryRelayK8SCharm(ops.CharmBase):
     # -- reconcile ------------------------------------------------------------
 
     def _reconcile(self, _: ops.EventBase) -> None:
+        # Open the workload port so the `<app>.<model>.svc` ClusterIP service
+        # routes to it (a k8s Service only forwards ports the charm opens);
+        # ingress fronts Relay for event intake.
+        self.unit.set_ports(sentry_relay.PORT)
         if not self.container.can_connect():
             return
         kafka = self._kafka_connection()
@@ -203,6 +218,15 @@ class SentryRelayK8SCharm(ops.CharmBase):
                 }
             },
         }
+
+    # -- tracing --------------------------------------------------------------
+
+    @property
+    def _charm_tracing_endpoint(self) -> str | None:
+        """The Tempo otlp_http endpoint for charm self-tracing, if available."""
+        if self._charm_tracing.is_ready():
+            return self._charm_tracing.get_endpoint("otlp_http")
+        return None
 
     # -- status ---------------------------------------------------------------
 

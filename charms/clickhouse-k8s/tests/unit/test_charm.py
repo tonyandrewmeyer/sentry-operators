@@ -100,6 +100,32 @@ def test_publishes_connection_to_requirer(ctx, monkeypatch):
     assert data["host"].startswith("clickhouse-k8s.")
 
 
+def test_opens_workload_ports(ctx, monkeypatch):
+    # Other charms reach ClickHouse via the `<app>.<model>.svc` ClusterIP
+    # service, which only forwards ports the charm explicitly opens.
+    monkeypatch.setattr("charm.clickhouse.get_version", lambda *a, **k: "25.3.6")
+    monkeypatch.setattr("charm.clickhouse.is_ready", lambda *a, **k: True)
+    container = _container()
+    state_in = testing.State(containers={container}, leader=True)
+
+    state_out = ctx.run(ctx.on.pebble_ready(container), state_in)
+
+    opened = {port.port for port in state_out.opened_ports}
+    assert opened == {8123, 9000, 9363}
+
+
+def test_opens_ports_even_when_container_down(ctx):
+    # Ports are opened before the can-connect guard so the service routes as
+    # soon as the workload comes up.
+    container = _container(can_connect=False)
+    state_in = testing.State(containers={container}, leader=True)
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    opened = {port.port for port in state_out.opened_ports}
+    assert opened == {8123, 9000, 9363}
+
+
 def test_non_leader_does_not_publish(ctx, monkeypatch):
     monkeypatch.setattr("charm.clickhouse.get_version", lambda *a, **k: "25.3.6")
     monkeypatch.setattr("charm.clickhouse.is_ready", lambda *a, **k: True)

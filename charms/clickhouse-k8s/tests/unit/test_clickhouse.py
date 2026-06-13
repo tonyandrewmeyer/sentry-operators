@@ -13,6 +13,14 @@ def test_server_config_contains_listen_and_memory():
     assert '<query_log remove="remove"/>' in cfg
 
 
+def test_server_config_exposes_prometheus_metrics():
+    cfg = clickhouse.render_server_config(max_memory_ratio=0.3, log_level="warning")
+    assert "<prometheus>" in cfg
+    assert "<endpoint>/metrics</endpoint>" in cfg
+    assert f"<port>{clickhouse.METRICS_PORT}</port>" in cfg
+    assert "<port>9363</port>" in cfg
+
+
 def test_server_config_rejects_bad_log_level():
     cfg = clickhouse.render_server_config(max_memory_ratio=0.3, log_level="bogus")
     assert "<level>warning</level>" in cfg

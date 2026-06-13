@@ -13,7 +13,13 @@ requires-python = ">=3.10"
 # 'charm-libs' block in charmcraft.yaml, run `charmcraft fetch-libs` to download the libraries,
 # then inspect the libraries for dependencies specified in PYDEPS. List those dependencies here.
 dependencies = [
-    "ops~=3.7"
+    "ops~=3.7",
+    # Required by the fetched observability libraries (PYDEPS): loki_push_api
+    # and grafana_dashboard need cosl, charm_tracing needs the OTLP exporter,
+    # and tracing needs pydantic.
+    "cosl>=0.0.53",
+    "pydantic",
+    "opentelemetry-exporter-otlp-proto-http==1.21.0",
 ]
 
 [dependency-groups]

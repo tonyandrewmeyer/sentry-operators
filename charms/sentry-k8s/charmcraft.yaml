@@ -69,15 +69,12 @@ resources:
 storage:
   data:
     type: filesystem
-    location: /data
     minimum-size: 2G
   taskbroker-data:
     type: filesystem
-    location: /opt/sqlite
     minimum-size: 1G
   symbolicator-cache:
     type: filesystem
-    location: /data
     minimum-size: 1G
 
 config:

@@ -1,0 +1,104 @@
+# Continuous integration for the sentry-operators charm monorepo.
+# Runs lint + unit tests, packs each charm, and checks the Terraform modules.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-unit:
+    name: Lint & unit (${{ matrix.charm }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        charm:
+          - charms/clickhouse-k8s
+          - charms/sentry-snuba-k8s
+          - charms/sentry-relay-k8s
+          - charms/sentry-k8s
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install tox
+        run: uv tool install tox --with tox-uv
+
+      - name: Lint
+        run: tox -e lint
+        working-directory: ${{ matrix.charm }}
+
+      - name: Unit tests
+        run: tox -e unit
+        working-directory: ${{ matrix.charm }}
+
+  pack:
+    name: Pack (${{ matrix.charm }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        charm:
+          - charms/clickhouse-k8s
+          - charms/sentry-snuba-k8s
+          - charms/sentry-relay-k8s
+          - charms/sentry-k8s
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The canonical craft-actions pack action installs charmcraft + LXD and
+      # runs `charmcraft pack` in the given working directory.
+      - name: Pack charm
+        id: pack
+        uses: canonical/craft-actions/charmcraft/pack@main
+        with:
+          path: ${{ matrix.charm }}
+
+      - name: Upload packed charm
+        uses: actions/upload-artifact@v4
+        with:
+          name: charm-${{ hashFiles(format('{0}/charmcraft.yaml', matrix.charm)) }}-${{ strategy.job-index }}
+          path: ${{ steps.pack.outputs.charm }}
+          if-no-files-found: error
+
+  terraform-check:
+    name: Terraform check (${{ matrix.charm }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        charm:
+          - charms/clickhouse-k8s
+          - charms/sentry-snuba-k8s
+          - charms/sentry-relay-k8s
+          - charms/sentry-k8s
+          # The root product/solution module that composes the four charms.
+          - "."
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+        working-directory: ${{ matrix.charm }}/terraform
+
+      - name: Terraform init
+        run: terraform init -backend=false
+        working-directory: ${{ matrix.charm }}/terraform
+
+      - name: Terraform validate
+        run: terraform validate
+        working-directory: ${{ matrix.charm }}/terraform

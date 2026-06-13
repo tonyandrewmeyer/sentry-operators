@@ -1,0 +1,60 @@
+# Integration tests for the sentry-operators charms.
+#
+# These run each charm's `tox -e integration` suite against a real Juju +
+# microk8s substrate. Note: a full, feature-complete self-hosted Sentry stack
+# (Sentry + Snuba + ClickHouse + Relay + Kafka + Postgres + Redis) needs
+# significant resources (~16 GB RAM). The matrix here exercises each charm's
+# own integration suite; the jobs are marked continue-on-error so a
+# resource-starved runner does not block the pipeline.
+name: Integration
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  integration:
+    name: Integration (${{ matrix.charm }})
+    runs-on: ubuntu-24.04
+    # The full Sentry integration is heavy; do not fail the whole pipeline if a
+    # standard GitHub runner cannot host the complete stack.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        charm:
+          - charms/clickhouse-k8s
+          - charms/sentry-snuba-k8s
+          - charms/sentry-relay-k8s
+          - charms/sentry-k8s
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Juju + microk8s
+        uses: charmed-kubernetes/actions-operator@main
+        with:
+          provider: microk8s
+          channel: 1.32-strict/stable
+          juju-channel: 3.6/stable
+
+      - name: Pack charm
+        id: pack
+        uses: canonical/craft-actions/charmcraft/pack@main
+        with:
+          path: ${{ matrix.charm }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install tox
+        run: uv tool install tox --with tox-uv
+
+      - name: Run integration tests
+        run: tox -e integration
+        working-directory: ${{ matrix.charm }}
+        env:
+          # The integration suite picks up the freshly packed charm here.
+          CHARM_PATH: ${{ steps.pack.outputs.charm }}

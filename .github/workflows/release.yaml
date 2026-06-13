@@ -1,8 +1,9 @@
 # Release: publish each charm to Charmhub's latest/edge channel.
 #
 # Runs on every push to main (continuous publishing of the edge channel) and on
-# manual dispatch. Guarded so it only runs on the canonical upstream repo, not
-# on forks (which will not hold a valid CHARMHUB_TOKEN).
+# manual dispatch. The publish job is skipped unless a CHARMHUB_TOKEN secret is
+# configured, so forks — and the upstream repo before a token is set — stay
+# green instead of failing.
 name: Release to edge
 
 on:
@@ -12,11 +13,21 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Expose whether a Charmhub token is available so the release job can skip
+  # cleanly when it is not (secrets cannot be referenced in a job-level `if`).
+  check-token:
+    runs-on: ubuntu-24.04
+    outputs:
+      has-token: ${{ steps.check.outputs.has-token }}
+    steps:
+      - id: check
+        run: echo "has-token=${{ secrets.CHARMHUB_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+
   release:
     name: Release ${{ matrix.charm.name }}
     runs-on: ubuntu-24.04
-    # Only publish from the upstream repository; forks lack CHARMHUB_TOKEN.
-    if: github.repository == 'tonyandrewmeyer/sentry-operator'
+    needs: check-token
+    if: needs.check-token.outputs.has-token == 'true'
     strategy:
       fail-fast: false
       matrix:

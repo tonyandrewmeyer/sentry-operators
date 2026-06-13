@@ -1,0 +1,47 @@
+# Shared tooling configuration for every charm and test suite in the monorepo.
+# Individual charms inherit this style via their own pyproject/tox; keeping the
+# canonical config at the repo root keeps formatting and linting identical
+# across all charms.
+
+[tool.ruff]
+line-length = 99
+target-version = "py312"
+extend-exclude = ["lib/charms", "venv", ".venv", "build"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "N",        # pep8-naming
+    "D",        # pydocstyle
+    "UP",       # pyupgrade
+    "B",        # flake8-bugbear
+    "C4",       # comprehensions
+    "RUF",      # ruff-specific
+    "S",        # flake8-bandit (security)
+    "SIM",      # flake8-simplify
+    "PL",       # pylint
+]
+ignore = [
+    "D105",     # missing docstring on magic method
+    "D107",     # missing docstring on __init__
+    "PLR2004",  # magic value comparison – noisy in charms
+    "PLR0913",  # too many arguments
+    "S603",     # subprocess call – charms shell out deliberately
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D1", "S101", "PLR2004", "S105", "S106"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.codespell]
+skip = "./lib,./venv,./.venv,./build,*.svg,./.git,./.tox"
+ignore-words-list = "assertIn,master"
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+pythonPlatform = "Linux"

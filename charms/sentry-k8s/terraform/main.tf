@@ -1,13 +1,17 @@
 # Copyright 2026 Tony Meyer
 # See LICENSE file for licensing details.
 
+data "juju_model" "this" {
+  name = var.model
+}
+
 resource "juju_application" "sentry" {
-  name        = var.app_name
-  model       = var.model
-  units       = var.units
-  constraints = var.constraints
-  config      = var.config
-  storage     = var.storage
+  name               = var.app_name
+  model_uuid         = data.juju_model.this.uuid
+  units              = var.units
+  constraints        = var.constraints
+  config             = var.config
+  storage_directives = var.storage
 
   charm {
     name     = "sentry-k8s"

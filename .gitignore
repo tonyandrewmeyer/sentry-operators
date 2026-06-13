@@ -23,6 +23,13 @@ charmcraft-build*.log
 # charm_tracing buffers events to disk when no tracing backend is related yet.
 .charm_tracing_buffer.raw
 
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+
 # Editors / OS
 .idea/
 .vscode/

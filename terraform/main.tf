@@ -4,6 +4,12 @@
 # Product / solution module: composes the four sentry-operators charm modules
 # with the Canonical data and ingress charms, and wires every integration.
 
+# The model is created out of band (e.g. `juju add-model sentry`); look it up
+# so every application and integration can reference it by UUID.
+data "juju_model" "this" {
+  name = var.model
+}
+
 # ---------------------------------------------------------------------------
 # The sentry-operators charms (this repo), via their per-charm modules.
 # ---------------------------------------------------------------------------
@@ -45,10 +51,10 @@ module "sentry" {
 # ---------------------------------------------------------------------------
 
 resource "juju_application" "postgresql" {
-  name  = "postgresql-k8s"
-  model = var.model
-  units = 1
-  trust = true
+  name       = "postgresql-k8s"
+  model_uuid = data.juju_model.this.uuid
+  units      = 1
+  trust      = true
 
   charm {
     name    = "postgresql-k8s"
@@ -64,10 +70,10 @@ resource "juju_application" "postgresql" {
 }
 
 resource "juju_application" "redis" {
-  name  = "redis-k8s"
-  model = var.model
-  units = 1
-  trust = true
+  name       = "redis-k8s"
+  model_uuid = data.juju_model.this.uuid
+  units      = 1
+  trust      = true
 
   charm {
     name    = "redis-k8s"
@@ -77,10 +83,10 @@ resource "juju_application" "redis" {
 }
 
 resource "juju_application" "kafka" {
-  name  = "kafka-k8s"
-  model = var.model
-  units = 1
-  trust = true
+  name       = "kafka-k8s"
+  model_uuid = data.juju_model.this.uuid
+  units      = 1
+  trust      = true
 
   charm {
     name    = "kafka-k8s"
@@ -94,10 +100,10 @@ resource "juju_application" "kafka" {
 }
 
 resource "juju_application" "traefik" {
-  name  = "traefik-k8s"
-  model = var.model
-  units = 1
-  trust = true
+  name       = "traefik-k8s"
+  model_uuid = data.juju_model.this.uuid
+  units      = 1
+  trust      = true
 
   charm {
     name    = "traefik-k8s"
@@ -113,7 +119,7 @@ resource "juju_application" "traefik" {
 # --- Snuba -> ClickHouse / Kafka / Redis ---
 
 resource "juju_integration" "snuba_clickhouse" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.snuba.app_name
@@ -126,7 +132,7 @@ resource "juju_integration" "snuba_clickhouse" {
 }
 
 resource "juju_integration" "snuba_kafka" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.snuba.app_name
@@ -139,7 +145,7 @@ resource "juju_integration" "snuba_kafka" {
 }
 
 resource "juju_integration" "snuba_redis" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.snuba.app_name
@@ -154,7 +160,7 @@ resource "juju_integration" "snuba_redis" {
 # --- Sentry -> Postgres / Kafka / Redis / Snuba ---
 
 resource "juju_integration" "sentry_postgresql" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.sentry.app_name
@@ -167,7 +173,7 @@ resource "juju_integration" "sentry_postgresql" {
 }
 
 resource "juju_integration" "sentry_kafka" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.sentry.app_name
@@ -180,7 +186,7 @@ resource "juju_integration" "sentry_kafka" {
 }
 
 resource "juju_integration" "sentry_redis" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.sentry.app_name
@@ -193,7 +199,7 @@ resource "juju_integration" "sentry_redis" {
 }
 
 resource "juju_integration" "sentry_snuba" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.sentry.app_name
@@ -208,7 +214,7 @@ resource "juju_integration" "sentry_snuba" {
 # --- Relay -> Kafka / Redis / Sentry ---
 
 resource "juju_integration" "relay_kafka" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.relay.app_name
@@ -221,7 +227,7 @@ resource "juju_integration" "relay_kafka" {
 }
 
 resource "juju_integration" "relay_redis" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.relay.app_name
@@ -234,7 +240,7 @@ resource "juju_integration" "relay_redis" {
 }
 
 resource "juju_integration" "relay_sentry" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.relay.app_name
@@ -249,7 +255,7 @@ resource "juju_integration" "relay_sentry" {
 # --- Ingress: traefik -> Sentry and Relay ---
 
 resource "juju_integration" "sentry_ingress" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.sentry.app_name
@@ -262,7 +268,7 @@ resource "juju_integration" "sentry_ingress" {
 }
 
 resource "juju_integration" "relay_ingress" {
-  model = var.model
+  model_uuid = data.juju_model.this.uuid
 
   application {
     name     = module.relay.app_name

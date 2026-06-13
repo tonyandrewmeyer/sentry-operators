@@ -31,3 +31,6 @@ charmcraft-build*.log
 *.local
 secrets/
 scratch/
+
+# Upstream reference material (not part of the build)
+.reference/

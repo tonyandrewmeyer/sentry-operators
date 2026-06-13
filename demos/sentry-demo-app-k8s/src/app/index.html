@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sentry Demo App</title>
+    <!-- The Sentry Browser SDK (a different language: JavaScript). -->
+    <script
+      src="https://browser.sentry-cdn.com/7.120.3/bundle.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      // The DSN is injected by the backend from the sentry_dsn relation.
+      const dsn = "__SENTRY_DSN__";
+      if (dsn) {
+        Sentry.init({ dsn: dsn, environment: "browser" });
+      }
+    </script>
+    <style>
+      body { font-family: sans-serif; max-width: 40rem; margin: 3rem auto; }
+      code { background: #f0f0f0; padding: 0.1rem 0.3rem; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin: 0.3rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Sentry demo app</h1>
+    <p>
+      This page is instrumented with the Sentry <strong>Browser</strong> SDK,
+      and the backend with the Sentry <strong>Python</strong> SDK. Both were
+      configured from a DSN delivered over a Juju relation.
+    </p>
+    <p>Sentry DSN configured for the browser: <code id="dsn-status"></code></p>
+    <p>
+      <button onclick="throwFrontendError()">Throw a frontend (JS) error</button>
+      <button onclick="fetch('/api/boom')">Throw a backend (Python) error</button>
+    </p>
+    <script>
+      document.getElementById("dsn-status").textContent =
+        "__SENTRY_DSN__".length > 0 ? "yes" : "no";
+      function throwFrontendError() {
+        throw new Error("Boom from the JavaScript frontend (sentry-demo-app)");
+      }
+      // Auto-trigger a frontend error when loaded with ?boom (for validation).
+      if (location.search.indexOf("boom") !== -1) {
+        setTimeout(throwFrontendError, 800);
+      }
+    </script>
+  </body>
+</html>

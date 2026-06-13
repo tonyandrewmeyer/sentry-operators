@@ -1,0 +1,42 @@
+type: charm
+name: sentry-demo-app-k8s
+title: Sentry Demo App
+summary: A tiny web app that reports errors to Sentry via the sentry_dsn relation.
+description: |
+  A minimal demonstration application: a Python (Flask) backend instrumented
+  with the Sentry Python SDK and a JavaScript frontend instrumented with the
+  Sentry Browser SDK. It integrates with the Sentry charm over the sentry_dsn
+  interface, receives a DSN over relation data, and configures both its backend
+  and its frontend to report errors to Sentry. It exists to demonstrate and
+  validate the sentry_dsn integration.
+
+base: ubuntu@24.04
+platforms:
+  amd64:
+
+assumes:
+  - juju >= 3.6
+  - k8s-api
+
+containers:
+  app:
+    resource: app-image
+
+resources:
+  app-image:
+    type: oci-image
+    description: A Python runtime that serves the demo application.
+    upstream-source: python:3.12-slim
+
+requires:
+  sentry-dsn:
+    interface: sentry_dsn
+    limit: 1
+    optional: false
+
+parts:
+  charm:
+    plugin: uv
+    source: .
+    build-snaps:
+      - astral-uv

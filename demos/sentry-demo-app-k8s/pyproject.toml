@@ -1,0 +1,19 @@
+[project]
+name = "sentry-demo-app-k8s"
+version = "0.0.1"
+requires-python = ">=3.10"
+dependencies = [
+    "ops~=3.7",
+    # The sentry_dsn interface library, vendored at ./library (kept in step by
+    # scripts/sync-libs.sh), so this app can receive a Sentry DSN over a relation.
+    "charmlibs-interfaces-sentry-dsn",
+]
+
+[tool.uv.sources]
+"charmlibs-interfaces-sentry-dsn" = { path = "library", editable = true }
+
+[dependency-groups]
+unit = [
+    "ops[testing]",
+    "pytest",
+]

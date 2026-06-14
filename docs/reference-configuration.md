@@ -103,10 +103,17 @@ interface name must match on both ends of a relation.
 | Action | Parameters | Description |
 |--------|------------|-------------|
 | `create-admin` | `email` (string, **required**), `password` (string, optional) | Create a Sentry superuser. If `password` is omitted a random one is generated. The password is written to a Juju secret whose id is returned. |
+| `get-admin-password` | `email` (string, **required**) | Return the id of the Juju secret holding a previously created admin's credentials. |
+| `pause` | — | Stop Sentry's web, workers and consumers for maintenance. Kafka retains events; the pause survives reconcile until `resume`. |
+| `resume` | — | Restart the Sentry services after a `pause`. |
 
 ```bash
 juju run sentry-k8s/leader create-admin email=admin@example.com
 juju show-secret --reveal <returned-secret-id>
+
+# Drain for maintenance, then bring the workload back.
+juju run sentry-k8s/leader pause
+juju run sentry-k8s/leader resume
 ```
 
 The other three charms (`sentry-snuba-k8s`, `sentry-relay-k8s`,

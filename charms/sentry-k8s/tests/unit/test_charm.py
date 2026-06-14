@@ -182,6 +182,84 @@ def test_create_admin_action(ctx, monkeypatch):
     assert "password-secret" in ctx.action_results
 
 
+def test_get_admin_password_action(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(containers=_containers(), relations={peer}, leader=True)
+
+    # Create the admin first, then look its credentials secret back up.
+    created = ctx.run(
+        ctx.on.action("create-admin", params={"email": "admin@example.com"}), state_in
+    )
+    ctx.run(ctx.on.action("get-admin-password", params={"email": "admin@example.com"}), created)
+
+    assert ctx.action_results["email"] == "admin@example.com"
+    assert ctx.action_results["password-secret"].startswith("secret:")
+
+
+def test_get_admin_password_unknown_user_fails(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(containers=_containers(), relations={peer}, leader=True)
+
+    with pytest.raises(testing.ActionFailed):
+        ctx.run(
+            ctx.on.action("get-admin-password", params={"email": "nobody@example.com"}), state_in
+        )
+
+
+def test_pause_stops_services_and_persists(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(
+        containers=_containers(), relations={peer}, leader=True, config={"feature-complete": False}
+    )
+
+    running = ctx.run(ctx.on.config_changed(), state_in)
+    assert running.get_container(SENTRY_CONTAINER).service_statuses["web"] == (
+        ops.pebble.ServiceStatus.ACTIVE
+    )
+
+    paused = ctx.run(ctx.on.action("pause"), running)
+
+    assert ctx.action_results["status"] == "paused"
+    assert paused.get_relation(peer.id).local_app_data.get("paused") == "true"
+    assert paused.get_container(SENTRY_CONTAINER).service_statuses["web"] == (
+        ops.pebble.ServiceStatus.INACTIVE
+    )
+    assert isinstance(paused.unit_status, testing.MaintenanceStatus)
+
+
+def test_pause_survives_reconcile(ctx, monkeypatch):
+    # A config change while paused must not restart the services.
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers", local_app_data={"paused": "true"})
+    state_in = testing.State(
+        containers=_containers(), relations={peer}, leader=True, config={"feature-complete": False}
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    services = state_out.get_container(SENTRY_CONTAINER).service_statuses
+    assert all(s == ops.pebble.ServiceStatus.INACTIVE for s in services.values())
+
+
+def test_resume_restarts_services(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers", local_app_data={"paused": "true"})
+    state_in = testing.State(
+        containers=_containers(), relations={peer}, leader=True, config={"feature-complete": False}
+    )
+
+    state_out = ctx.run(ctx.on.action("resume"), state_in)
+
+    assert ctx.action_results["status"] == "resumed"
+    assert "paused" not in state_out.get_relation(peer.id).local_app_data
+    assert state_out.get_container(SENTRY_CONTAINER).service_statuses["web"] == (
+        ops.pebble.ServiceStatus.ACTIVE
+    )
+
+
 # The provisioning script prints the DSN parts on stdout; ["python3"] matches it.
 _PROVISION_EXEC = testing.Exec(
     ["python3"], return_code=0, stdout="PUBLIC_KEY=abc123\nPROJECT_ID=2\n"

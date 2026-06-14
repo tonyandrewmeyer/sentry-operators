@@ -141,6 +141,26 @@ actions:
     required:
       - email
     additionalProperties: false
+  get-admin-password:
+    description: |
+      Return the id of the Juju secret holding a previously created admin user's
+      credentials. Reveal it with ``juju show-secret <id> --reveal``.
+    params:
+      email:
+        type: string
+        description: Email address of the admin user to look up.
+    required:
+      - email
+    additionalProperties: false
+  pause:
+    description: |
+      Stop Sentry's web, workers and consumers for maintenance. Event ingestion
+      pauses (Kafka retains events) until ``resume`` is run. The pause survives
+      reconcile, so config changes will not restart the services.
+    additionalProperties: false
+  resume:
+    description: Restart the Sentry services after a ``pause``.
+    additionalProperties: false
 
 provides:
   sentry-relay:

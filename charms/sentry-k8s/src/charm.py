@@ -38,6 +38,8 @@ PEER_RELATION = "sentry-peers"
 DATABASE_NAME = "sentry"
 KAFKA_TOPIC = "sentry"
 SECRET_LABEL = "sentry-secret-key"
+# Peer-data key set while the operator has paused the services for maintenance.
+PAUSED_KEY = "paused"
 # The Relay charm's workload port; events in a published DSN are sent here.
 RELAY_PORT = 3000
 # The shared Sentry organization that DSN-integrated apps' projects live under.
@@ -105,6 +107,9 @@ class SentryK8SCharm(ops.CharmBase):
             framework.observe(event, self._reconcile)
         framework.observe(self.on.collect_unit_status, self._on_collect_status)
         framework.observe(self.on.create_admin_action, self._on_create_admin)
+        framework.observe(self.on.get_admin_password_action, self._on_get_admin_password)
+        framework.observe(self.on.pause_action, self._on_pause)
+        framework.observe(self.on.resume_action, self._on_resume)
         framework.observe(self.sentry_dsn.on.dsn_requested, self._on_dsn_requested)
 
     # -- relation data --------------------------------------------------------
@@ -180,6 +185,34 @@ class SentryK8SCharm(ops.CharmBase):
         peers.data[self.app]["secret-key-id"] = secret.id  # type: ignore[assignment]
         return key
 
+    # -- pause/resume ---------------------------------------------------------
+
+    def _paused(self) -> bool:
+        """Whether the operator has paused the services (peer-data flag)."""
+        peers = self.model.get_relation(PEER_RELATION)
+        if peers is None:
+            return False
+        return peers.data[self.app].get(PAUSED_KEY) == "true"
+
+    def _set_paused(self, paused: bool) -> None:
+        peers = self.model.get_relation(PEER_RELATION)
+        if peers is None:
+            return
+        if paused:
+            peers.data[self.app][PAUSED_KEY] = "true"
+        else:
+            peers.data[self.app].pop(PAUSED_KEY, None)
+
+    def _stop_sentry_services(self) -> None:
+        """Stop every running Sentry service (web, workers and consumers)."""
+        running = [
+            name
+            for name, service in self.sentry_container.get_services().items()
+            if service.is_running()
+        ]
+        if running:
+            self.sentry_container.stop(*running)
+
     # -- reconcile ------------------------------------------------------------
 
     def _reconcile(self, _: ops.EventBase) -> None:
@@ -203,6 +236,12 @@ class SentryK8SCharm(ops.CharmBase):
         self._push_sentry_config(postgres, kafka, redis)
         self._configure_taskbroker(kafka)
         self._configure_symbolicator()
+
+        if self._paused():
+            # Keep config current but leave the workload stopped; the pause flag
+            # outlives this event so reconcile will not restart the services.
+            self._stop_sentry_services()
+            return
 
         if self.unit.is_leader():
             self._migrate(postgres, kafka, redis, snuba_url, secret_key)
@@ -439,6 +478,38 @@ class SentryK8SCharm(ops.CharmBase):
         )
         event.set_results({"email": email, "password-secret": secret.id})
 
+    def _on_get_admin_password(self, event: ops.ActionEvent) -> None:
+        if not self.unit.is_leader():
+            event.fail("Run this action on the leader unit.")
+            return
+        email = event.params["email"]
+        try:
+            secret = self.model.get_secret(label=f"sentry-admin-{email}")
+            secret_id = secret.get_info().id
+        except ops.SecretNotFoundError:
+            event.fail(f"No admin credentials stored for {email!r}; run create-admin first.")
+            return
+        event.set_results({"email": email, "password-secret": secret_id})
+
+    def _on_pause(self, event: ops.ActionEvent) -> None:
+        if not self.unit.is_leader():
+            event.fail("Run this action on the leader unit.")
+            return
+        if not self.sentry_container.can_connect():
+            event.fail("Sentry container is not ready.")
+            return
+        self._set_paused(True)
+        self._stop_sentry_services()
+        event.set_results({"status": "paused"})
+
+    def _on_resume(self, event: ops.ActionEvent) -> None:
+        if not self.unit.is_leader():
+            event.fail("Run this action on the leader unit.")
+            return
+        self._set_paused(False)
+        self._reconcile(event)
+        event.set_results({"status": "resumed"})
+
     # -- sentry-dsn integration -----------------------------------------------
 
     def _relay_host(self) -> str | None:
@@ -532,6 +603,9 @@ class SentryK8SCharm(ops.CharmBase):
     def _on_collect_status(self, event: ops.CollectStatusEvent) -> None:
         if not self.sentry_container.can_connect():
             event.add_status(ops.MaintenanceStatus("waiting for Sentry container"))
+            return
+        if self._paused():
+            event.add_status(ops.MaintenanceStatus("paused (run the resume action)"))
             return
         missing = self._missing()
         if missing:

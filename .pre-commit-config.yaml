@@ -9,7 +9,7 @@ minimum_pre_commit_version: "3.5.0"
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.10
+    rev: v0.15.17
     hooks:
       # Auto-fixable lint issues, then formatting. Each charm's own pyproject
       # ruff config is picked up automatically (nearest config wins). Vendored
@@ -23,7 +23,7 @@ repos:
         exclude: '(^|/)(lib/charms/|library/|\.reference/)'
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: v2.4.2
     hooks:
       - id: codespell
         additional_dependencies: ["tomli"]

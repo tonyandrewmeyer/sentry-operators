@@ -21,6 +21,10 @@ import dataclasses
 WEB_PORT = 9000
 TASKBROKER_GRPC_PORT = 50051
 SYMBOLICATOR_PORT = 3021
+# Sentry emits statsd metrics (not Prometheus). A statsd-exporter sidecar takes
+# statsd over UDP and re-exposes it as Prometheus metrics for COS to scrape.
+STATSD_UDP_PORT = 9125
+STATSD_METRICS_PORT = 9102
 
 SENTRY_CONF_DIR = "/etc/sentry"
 SENTRY_CONF_PY = f"{SENTRY_CONF_DIR}/sentry.conf.py"
@@ -331,6 +335,12 @@ SENTRY_WEB_OPTIONS = {{
 }}
 
 CSRF_TRUSTED_ORIGINS = {csrf_origins!r}
+
+# Emit metrics as statsd to the local statsd-exporter sidecar (UDP), which
+# re-exposes them for Prometheus. This mirrors self-hosted Sentry's optional
+# SENTRY_STATSD_ADDR wiring.
+SENTRY_METRICS_BACKEND = "sentry.metrics.statsd.StatsdMetricsBackend"
+SENTRY_METRICS_OPTIONS = {{"host": "localhost", "port": {STATSD_UDP_PORT}}}
 {tls_block}'''
 
 
@@ -404,6 +414,14 @@ def taskbroker_environment(kafka: KafkaInfo) -> dict[str, str]:
             }
         )
     return env
+
+
+def statsd_exporter_command() -> str:
+    """Pebble command for the statsd-exporter sidecar (statsd UDP -> Prometheus)."""
+    return (
+        f"/bin/statsd_exporter --statsd.listen-udp=:{STATSD_UDP_PORT} "
+        f"--web.listen-address=:{STATSD_METRICS_PORT}"
+    )
 
 
 def render_taskbroker_config() -> str:

@@ -30,6 +30,7 @@ def _containers(exec_sentry=True):
         sentry_c,
         testing.Container("taskbroker", can_connect=True),
         testing.Container("symbolicator", can_connect=True),
+        testing.Container("statsd-exporter", can_connect=True),
     }
 
 
@@ -229,6 +230,19 @@ def test_taskbroker_and_symbolicator_started(ctx, monkeypatch):
     )
 
 
+def test_statsd_exporter_started(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(containers=_containers(), relations={peer}, leader=True)
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert (
+        state_out.get_container("statsd-exporter").service_statuses["statsd-exporter"]
+        == ops.pebble.ServiceStatus.ACTIVE
+    )
+
+
 def test_sentry_conf_pushed(ctx, monkeypatch):
     _wire(monkeypatch)
     peer = testing.PeerRelation("sentry-peers")
@@ -359,6 +373,7 @@ def _containers_with_provision():
         sentry_c,
         testing.Container("taskbroker", can_connect=True),
         testing.Container("symbolicator", can_connect=True),
+        testing.Container("statsd-exporter", can_connect=True),
     }
 
 
@@ -428,6 +443,10 @@ def test_no_dsn_published_without_a_relay(ctx, monkeypatch):
 
 def test_loki_alert_rules_are_valid():
     _assert_alert_rules("loki_alert_rules", topology_required=True)
+
+
+def test_prometheus_alert_rules_are_valid():
+    _assert_alert_rules("prometheus_alert_rules", topology_required=True)
 
 
 def _assert_alert_rules(subdir: str, *, topology_required: bool) -> None:

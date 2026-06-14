@@ -147,6 +147,17 @@ def test_environment():
     assert env["SENTRY_EVENT_RETENTION_DAYS"] == "30"
 
 
+def test_statsd_metrics_wired():
+    # The rendered config points Sentry's statsd backend at the local exporter.
+    conf = _conf()
+    assert "sentry.metrics.statsd.StatsdMetricsBackend" in conf
+    assert str(sentry.STATSD_UDP_PORT) in conf
+    # The exporter listens for statsd (UDP) and serves Prometheus metrics.
+    cmd = sentry.statsd_exporter_command()
+    assert f"--statsd.listen-udp=:{sentry.STATSD_UDP_PORT}" in cmd
+    assert f"--web.listen-address=:{sentry.STATSD_METRICS_PORT}" in cmd
+
+
 def test_cleanup_commands():
     # The ticker only raises the notice the charm listens for; it does not prune.
     tick = sentry.cleanup_tick_command()

@@ -18,6 +18,10 @@ from __future__ import annotations
 import dataclasses
 
 API_PORT = 1218
+# Snuba emits statsd metrics; a statsd-exporter sidecar takes statsd over UDP and
+# re-exposes it as Prometheus metrics for COS to scrape.
+STATSD_UDP_PORT = 9125
+STATSD_METRICS_PORT = 9102
 
 
 @dataclasses.dataclass(frozen=True)
@@ -219,6 +223,9 @@ def build_environment(
         "SENTRY_EVENT_RETENTION_DAYS": str(event_retention_days),
         "UWSGI_MAX_REQUESTS": "10000",
         "UWSGI_DISABLE_LOGGING": "true",
+        # Send statsd metrics to the local statsd-exporter sidecar (matches
+        # self-hosted Snuba's optional SNUBA_STATSD_ADDR wiring).
+        "SNUBA_STATSD_ADDR": f"localhost:{STATSD_UDP_PORT}",
     }
     if redis_password:
         env["REDIS_PASSWORD"] = redis_password
@@ -228,6 +235,14 @@ def build_environment(
         env["KAFKA_SASL_USERNAME"] = kafka_username
         env["KAFKA_SASL_PASSWORD"] = kafka_password
     return env
+
+
+def statsd_exporter_command() -> str:
+    """Pebble command for the statsd-exporter sidecar (statsd UDP -> Prometheus)."""
+    return (
+        f"/bin/statsd_exporter --statsd.listen-udp=:{STATSD_UDP_PORT} "
+        f"--web.listen-address=:{STATSD_METRICS_PORT}"
+    )
 
 
 def bootstrap_command() -> list[str]:

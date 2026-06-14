@@ -36,12 +36,18 @@ assumes:
 containers:
   snuba:
     resource: snuba-image
+  statsd-exporter:
+    resource: statsd-exporter-image
 
 resources:
   snuba-image:
     type: oci-image
     description: OCI image for Snuba, pinned to self-hosted Sentry 26.5.2.
     upstream-source: ghcr.io/getsentry/snuba:26.5.2
+  statsd-exporter-image:
+    type: oci-image
+    description: Prometheus statsd-exporter; re-exposes Snuba's statsd metrics for scraping.
+    upstream-source: prom/statsd-exporter:v0.27.1
 
 config:
   options:

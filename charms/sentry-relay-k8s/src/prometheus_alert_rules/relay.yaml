@@ -1,0 +1,23 @@
+# Metric-based alerts for Relay. Relay emits statsd, which the statsd-exporter
+# sidecar re-exposes for Prometheus (see the MetricsEndpointProvider in the
+# charm). The `%%juju_topology%%` stub is replaced with this unit's Juju topology
+# by the prometheus_scrape library.
+#
+# Note: this ships the signal that is certain to exist -- the scrape target being
+# reachable. Alerts on specific Relay statsd series (e.g. event.accepted /
+# event.rejected) are left out until their exporter-munged names are confirmed
+# against a running deployment, to avoid shipping alerts that never fire.
+groups:
+  - name: relay_metrics
+    rules:
+      - alert: RelayMetricsTargetDown
+        expr: up{%%juju_topology%%} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Relay metrics target is unreachable ({{ $labels.juju_unit }})"
+          description: >
+            Prometheus has not scraped the Relay statsd-exporter for 5 minutes.
+            The unit is likely down or its metrics sidecar is not running, leaving
+            the event-intake front door unmonitored.

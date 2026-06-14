@@ -14,6 +14,7 @@ from charms.clickhouse_k8s.v0.clickhouse import ClickHouseConnection, ClickHouse
 from charms.data_platform_libs.v0.data_interfaces import KafkaRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.sentry_snuba_k8s.v0.snuba import SnubaProvider
 from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
 from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
@@ -23,6 +24,7 @@ import sentry_snuba
 logger = logging.getLogger(__name__)
 
 CONTAINER = "snuba"
+STATSD_EXPORTER_CONTAINER = "statsd-exporter"
 KAFKA_RELATION = "kafka"
 REDIS_RELATION = "redis"
 # Snuba/Sentry create dozens of topics on bootstrap, so the Kafka user needs
@@ -46,16 +48,22 @@ class SentrySnubaK8SCharm(ops.CharmBase):
     def __init__(self, framework: ops.Framework):
         super().__init__(framework)
         self.container = self.unit.get_container(CONTAINER)
+        self.statsd_container = self.unit.get_container(STATSD_EXPORTER_CONTAINER)
         self.clickhouse = ClickHouseRequirer(self)
         self.kafka = KafkaRequires(
             self, relation_name=KAFKA_RELATION, topic=KAFKA_TOPIC, extra_user_roles="admin"
         )
         self.snuba = SnubaProvider(self)
 
-        # Observability: forward Pebble logs to Loki, ship a log-based Grafana
-        # dashboard, and trace the charm. Snuba emits statsd (not Prometheus)
-        # metrics, so there is no metrics-endpoint scrape here.
+        # Observability: forward Pebble logs to Loki, ship a Grafana dashboard,
+        # trace the charm, and scrape the statsd-exporter sidecar that bridges
+        # Snuba's statsd metrics to Prometheus.
         self._logging = LogForwarder(self, relation_name="logging")
+        self._metrics = MetricsEndpointProvider(
+            self,
+            relation_name="metrics-endpoint",
+            jobs=[{"static_configs": [{"targets": [f"*:{sentry_snuba.STATSD_METRICS_PORT}"]}]}],
+        )
         self._grafana_dashboards = GrafanaDashboardProvider(
             self, relation_name="grafana-dashboard"
         )
@@ -65,6 +73,7 @@ class SentrySnubaK8SCharm(ops.CharmBase):
 
         for event in (
             self.on[CONTAINER].pebble_ready,
+            self.on[STATSD_EXPORTER_CONTAINER].pebble_ready,
             self.on.config_changed,
             self.on.upgrade_charm,
             self.clickhouse.on.ready,
@@ -127,6 +136,7 @@ class SentrySnubaK8SCharm(ops.CharmBase):
         # to it (a k8s Service only forwards ports the charm opens); without
         # this, Sentry cannot reach the Snuba API.
         self.unit.set_ports(sentry_snuba.API_PORT)
+        self._configure_statsd_exporter()
         if not self.container.can_connect():
             return
         clickhouse = self.clickhouse.get_connection()
@@ -144,6 +154,26 @@ class SentrySnubaK8SCharm(ops.CharmBase):
         )
         self.container.replan()
         self._publish_url()
+
+    def _configure_statsd_exporter(self) -> None:
+        if not self.statsd_container.can_connect():
+            return
+        self.statsd_container.add_layer(
+            "statsd-exporter",
+            {
+                "summary": "statsd-exporter",
+                "services": {
+                    "statsd-exporter": {
+                        "override": "replace",
+                        "summary": "statsd to Prometheus exporter",
+                        "command": sentry_snuba.statsd_exporter_command(),
+                        "startup": "enabled",
+                    }
+                },
+            },
+            combine=True,
+        )
+        self.statsd_container.replan()
 
     def _environment(
         self, clickhouse: ClickHouseConnection, kafka: KafkaConnection, redis: tuple[str, int]

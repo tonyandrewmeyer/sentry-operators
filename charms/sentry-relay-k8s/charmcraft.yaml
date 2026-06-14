@@ -43,12 +43,18 @@ assumes:
 containers:
   relay:
     resource: relay-image
+  statsd-exporter:
+    resource: statsd-exporter-image
 
 resources:
   relay-image:
     type: oci-image
     description: OCI image for Relay, pinned to self-hosted Sentry 26.5.2.
     upstream-source: ghcr.io/getsentry/relay:26.5.2
+  statsd-exporter-image:
+    type: oci-image
+    description: Prometheus statsd-exporter; re-exposes Relay's statsd metrics for scraping.
+    upstream-source: prom/statsd-exporter:v0.27.1
 
 config:
   options:

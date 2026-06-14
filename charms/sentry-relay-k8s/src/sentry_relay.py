@@ -21,6 +21,10 @@ from __future__ import annotations
 import yaml
 
 PORT = 3000
+# Relay emits statsd metrics; a statsd-exporter sidecar takes statsd over UDP and
+# re-exposes it as Prometheus metrics for COS to scrape.
+STATSD_UDP_PORT = 9125
+STATSD_METRICS_PORT = 9102
 CONFIG_DIR = "/work/.relay"
 CONFIG_PATH = f"{CONFIG_DIR}/config.yml"
 CREDENTIALS_PATH = f"{CONFIG_DIR}/credentials.json"
@@ -91,8 +95,21 @@ def build_config(
             # otherwise fails Relay's health check.
             "max_memory_percent": 1.0,
         },
+        # Emit statsd to the local statsd-exporter sidecar, which re-exposes the
+        # metrics for Prometheus.
+        "metrics": {
+            "statsd": f"localhost:{STATSD_UDP_PORT}",
+        },
     }
     return yaml.safe_dump(config, sort_keys=False)
+
+
+def statsd_exporter_command() -> str:
+    """Pebble command for the statsd-exporter sidecar (statsd UDP -> Prometheus)."""
+    return (
+        f"/bin/statsd_exporter --statsd.listen-udp=:{STATSD_UDP_PORT} "
+        f"--web.listen-address=:{STATSD_METRICS_PORT}"
+    )
 
 
 def run_command() -> str:

@@ -12,6 +12,7 @@ import logging
 import ops
 from charms.data_platform_libs.v0.data_interfaces import KafkaRequires
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.sentry_k8s.v0.sentry_relay import SentryRelayRequirer
 from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
 from charms.tempo_coordinator_k8s.v0.tracing import TracingEndpointRequirer
@@ -22,6 +23,7 @@ import sentry_relay
 logger = logging.getLogger(__name__)
 
 CONTAINER = "relay"
+STATSD_EXPORTER_CONTAINER = "statsd-exporter"
 KAFKA_RELATION = "kafka"
 REDIS_RELATION = "redis"
 SENTRY_RELATION = "sentry"
@@ -52,21 +54,29 @@ class SentryRelayK8SCharm(ops.CharmBase):
     def __init__(self, framework: ops.Framework):
         super().__init__(framework)
         self.container = self.unit.get_container(CONTAINER)
+        self.statsd_container = self.unit.get_container(STATSD_EXPORTER_CONTAINER)
         self.kafka = KafkaRequires(
             self, relation_name=KAFKA_RELATION, topic=KAFKA_TOPIC, extra_user_roles="admin"
         )
         self.sentry = SentryRelayRequirer(self)
         self.ingress = IngressPerAppRequirer(self, port=sentry_relay.PORT, strip_prefix=True)
 
-        # Observability: forward Pebble logs to Loki and trace the charm. Relay
-        # emits statsd (not Prometheus) metrics, so there is no scrape here.
+        # Observability: forward Pebble logs to Loki, trace the charm, and scrape
+        # the statsd-exporter sidecar that bridges Relay's statsd metrics to
+        # Prometheus.
         self._logging = LogForwarder(self, relation_name="logging")
+        self._metrics = MetricsEndpointProvider(
+            self,
+            relation_name="metrics-endpoint",
+            jobs=[{"static_configs": [{"targets": [f"*:{sentry_relay.STATSD_METRICS_PORT}"]}]}],
+        )
         self._charm_tracing = TracingEndpointRequirer(
             self, relation_name="charm-tracing", protocols=["otlp_http"]
         )
 
         for event in (
             self.on[CONTAINER].pebble_ready,
+            self.on[STATSD_EXPORTER_CONTAINER].pebble_ready,
             self.on.config_changed,
             self.on.upgrade_charm,
             self.on[KAFKA_RELATION].relation_changed,
@@ -164,6 +174,7 @@ class SentryRelayK8SCharm(ops.CharmBase):
         # routes to it (a k8s Service only forwards ports the charm opens);
         # ingress fronts Relay for event intake.
         self.unit.set_ports(sentry_relay.PORT)
+        self._configure_statsd_exporter()
         if not self.container.can_connect():
             return
         kafka = self._kafka_connection()
@@ -192,6 +203,26 @@ class SentryRelayK8SCharm(ops.CharmBase):
         self.container.push(sentry_relay.CONFIG_PATH, config, make_dirs=True)
         self.container.add_layer("relay", self._pebble_layer(), combine=True)
         self.container.replan()
+
+    def _configure_statsd_exporter(self) -> None:
+        if not self.statsd_container.can_connect():
+            return
+        self.statsd_container.add_layer(
+            "statsd-exporter",
+            {
+                "summary": "statsd-exporter",
+                "services": {
+                    "statsd-exporter": {
+                        "override": "replace",
+                        "summary": "statsd to Prometheus exporter",
+                        "command": sentry_relay.statsd_exporter_command(),
+                        "startup": "enabled",
+                    }
+                },
+            },
+            combine=True,
+        )
+        self.statsd_container.replan()
 
     def _pebble_layer(self) -> ops.pebble.LayerDict:
         services: dict[str, ops.pebble.ServiceDict] = {

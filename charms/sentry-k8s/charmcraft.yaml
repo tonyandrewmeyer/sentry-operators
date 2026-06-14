@@ -51,6 +51,8 @@ containers:
     mounts:
       - storage: symbolicator-cache
         location: /data
+  statsd-exporter:
+    resource: statsd-exporter-image
 
 resources:
   sentry-image:
@@ -65,6 +67,10 @@ resources:
     type: oci-image
     description: OCI image for the symbolicator stack-trace symbolication service.
     upstream-source: ghcr.io/getsentry/symbolicator:26.5.2
+  statsd-exporter-image:
+    type: oci-image
+    description: Prometheus statsd-exporter; re-exposes Sentry's statsd metrics for scraping.
+    upstream-source: prom/statsd-exporter:v0.27.1
 
 storage:
   data:

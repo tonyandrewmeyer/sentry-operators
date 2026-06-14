@@ -14,6 +14,7 @@ from charmlibs.interfaces.sentry_dsn import SentryDsnProvider
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires, KafkaRequires
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardProvider
 from charms.loki_k8s.v1.loki_push_api import LogForwarder
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.sentry_k8s.v0.sentry_relay import SentryRelayProvider
 from charms.sentry_snuba_k8s.v0.snuba import SnubaRequirer
 from charms.tempo_coordinator_k8s.v0.charm_tracing import trace_charm
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 SENTRY_CONTAINER = "sentry"
 TASKBROKER_CONTAINER = "taskbroker"
 SYMBOLICATOR_CONTAINER = "symbolicator"
+STATSD_EXPORTER_CONTAINER = "statsd-exporter"
 
 DATABASE_RELATION = "database"
 KAFKA_RELATION = "kafka"
@@ -55,11 +57,17 @@ class SentryK8SCharm(ops.CharmBase):
         self.sentry_container = self.unit.get_container(SENTRY_CONTAINER)
         self.taskbroker_container = self.unit.get_container(TASKBROKER_CONTAINER)
         self.symbolicator_container = self.unit.get_container(SYMBOLICATOR_CONTAINER)
+        self.statsd_container = self.unit.get_container(STATSD_EXPORTER_CONTAINER)
 
         # Observability: forward all containers' Pebble logs to Loki, ship a
-        # log-based Grafana dashboard, and trace the charm. Sentry emits statsd
-        # (not Prometheus) metrics, so there is no metrics-endpoint scrape here.
+        # Grafana dashboard, trace the charm, and scrape the statsd-exporter
+        # sidecar that bridges Sentry's statsd metrics to Prometheus.
         self._logging = LogForwarder(self, relation_name="logging")
+        self._metrics = MetricsEndpointProvider(
+            self,
+            relation_name="metrics-endpoint",
+            jobs=[{"static_configs": [{"targets": [f"*:{sentry.STATSD_METRICS_PORT}"]}]}],
+        )
         self._grafana_dashboards = GrafanaDashboardProvider(
             self, relation_name="grafana-dashboard"
         )
@@ -82,6 +90,7 @@ class SentryK8SCharm(ops.CharmBase):
             self.on[SENTRY_CONTAINER].pebble_ready,
             self.on[TASKBROKER_CONTAINER].pebble_ready,
             self.on[SYMBOLICATOR_CONTAINER].pebble_ready,
+            self.on[STATSD_EXPORTER_CONTAINER].pebble_ready,
             self.on.config_changed,
             self.on.upgrade_charm,
             # Pick up a rotated smtp-password user secret: nothing else fires
@@ -241,6 +250,7 @@ class SentryK8SCharm(ops.CharmBase):
         self._push_sentry_config(postgres, kafka, redis)
         self._configure_taskbroker(kafka)
         self._configure_symbolicator()
+        self._configure_statsd_exporter()
 
         if self._paused():
             # Keep config current but leave the workload stopped; the pause flag
@@ -313,6 +323,14 @@ class SentryK8SCharm(ops.CharmBase):
             "symbolicator", self._symbolicator_layer(), combine=True
         )
         self.symbolicator_container.replan()
+
+    def _configure_statsd_exporter(self) -> None:
+        if not self.statsd_container.can_connect():
+            return
+        self.statsd_container.add_layer(
+            "statsd-exporter", self._statsd_exporter_layer(), combine=True
+        )
+        self.statsd_container.replan()
 
     def _migrate(
         self,
@@ -403,6 +421,19 @@ class SentryK8SCharm(ops.CharmBase):
                     "command": f"/opt/taskbroker -c {sentry.TASKBROKER_CONFIG_YML}",
                     "startup": "enabled",
                     "environment": sentry.taskbroker_environment(kafka),
+                }
+            },
+        }
+
+    def _statsd_exporter_layer(self) -> ops.pebble.LayerDict:
+        return {
+            "summary": "statsd-exporter",
+            "services": {
+                "statsd-exporter": {
+                    "override": "replace",
+                    "summary": "statsd to Prometheus exporter",
+                    "command": sentry.statsd_exporter_command(),
+                    "startup": "enabled",
                 }
             },
         }

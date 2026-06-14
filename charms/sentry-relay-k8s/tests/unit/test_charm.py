@@ -14,6 +14,9 @@ from charm import CONTAINER, KafkaConnection, SentryRelayK8SCharm
 
 CREDENTIALS = '{"secret_key":"s","public_key":"p","relay_id":"r"}'
 
+# The statsd-exporter sidecar must be present in every State the charm reconciles.
+STATSD = testing.Container("statsd-exporter", can_connect=True)
+
 
 @pytest.fixture
 def ctx():
@@ -45,7 +48,7 @@ def _container():
 
 def test_blocked_without_integrations(ctx):
     container = testing.Container(CONTAINER, can_connect=True)
-    state_in = testing.State(containers={container}, leader=True)
+    state_in = testing.State(containers={container, STATSD}, leader=True)
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
@@ -56,7 +59,7 @@ def test_blocked_without_integrations(ctx):
 
 def test_maintenance_without_container(ctx):
     container = testing.Container(CONTAINER, can_connect=False)
-    state_in = testing.State(containers={container}, leader=True)
+    state_in = testing.State(containers={container, STATSD}, leader=True)
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
@@ -66,7 +69,7 @@ def test_maintenance_without_container(ctx):
 def test_starts_relay_when_ready(ctx, monkeypatch):
     _wire_backends(monkeypatch)
     peers = testing.PeerRelation("relay-peers")
-    state_in = testing.State(containers={_container()}, relations={peers}, leader=True)
+    state_in = testing.State(containers={_container(), STATSD}, relations={peers}, leader=True)
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
@@ -75,10 +78,27 @@ def test_starts_relay_when_ready(ctx, monkeypatch):
     assert state_out.unit_status == testing.ActiveStatus()
 
 
+def test_statsd_exporter_started_and_configured(ctx, monkeypatch):
+    _wire_backends(monkeypatch)
+    peers = testing.PeerRelation("relay-peers")
+    state_in = testing.State(containers={_container(), STATSD}, relations={peers}, leader=True)
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    assert (
+        state_out.get_container("statsd-exporter").service_statuses["statsd-exporter"]
+        == ops.pebble.ServiceStatus.ACTIVE
+    )
+    # Relay's config.yml points its statsd metrics at the local exporter.
+    fs = state_out.get_container(CONTAINER).get_filesystem(ctx)
+    config = yaml.safe_load((fs / "work" / ".relay" / "config.yml").read_text())
+    assert config["metrics"]["statsd"] == "localhost:9125"
+
+
 def test_config_pushed_when_ready(ctx, monkeypatch):
     _wire_backends(monkeypatch, kafka_user="relay-user")
     peers = testing.PeerRelation("relay-peers")
-    state_in = testing.State(containers={_container()}, relations={peers}, leader=True)
+    state_in = testing.State(containers={_container(), STATSD}, relations={peers}, leader=True)
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
@@ -99,7 +119,7 @@ def test_config_pushed_when_ready(ctx, monkeypatch):
 def test_credentials_stored_in_peer_secret(ctx, monkeypatch):
     _wire_backends(monkeypatch)
     peers = testing.PeerRelation("relay-peers")
-    state_in = testing.State(containers={_container()}, relations={peers}, leader=True)
+    state_in = testing.State(containers={_container(), STATSD}, relations={peers}, leader=True)
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
@@ -113,7 +133,7 @@ def test_credentials_stored_in_peer_secret(ctx, monkeypatch):
 def test_no_peer_relation_waits(ctx, monkeypatch):
     """Without the peer relation, credentials can't be stored, so no service starts."""
     _wire_backends(monkeypatch)
-    state_in = testing.State(containers={_container()}, leader=True)
+    state_in = testing.State(containers={_container(), STATSD}, leader=True)
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
 
@@ -130,7 +150,7 @@ def test_non_leader_reads_credentials_from_secret(ctx, monkeypatch):
     # Non-leader: must not exec; reads the secret instead.
     container = testing.Container(CONTAINER, can_connect=True)
     state_in = testing.State(
-        containers={container}, relations={peers}, secrets={secret}, leader=False
+        containers={container, STATSD}, relations={peers}, secrets={secret}, leader=False
     )
 
     state_out = ctx.run(ctx.on.config_changed(), state_in)
@@ -144,7 +164,7 @@ def test_non_leader_reads_credentials_from_secret(ctx, monkeypatch):
 def test_failing_health_check_sets_waiting(ctx, monkeypatch):
     _wire_backends(monkeypatch)
     peers = testing.PeerRelation("relay-peers")
-    state_in = testing.State(containers={_container()}, relations={peers}, leader=True)
+    state_in = testing.State(containers={_container(), STATSD}, relations={peers}, leader=True)
 
     started = ctx.run(ctx.on.config_changed(), state_in)  # installs the ready check
     check = testing.CheckInfo(
@@ -155,19 +175,22 @@ def test_failing_health_check_sets_waiting(ctx, monkeypatch):
     )
     down = dataclasses.replace(started.get_container(CONTAINER), check_infos={check})
     state_out = ctx.run(
-        ctx.on.pebble_check_failed(down, check), dataclasses.replace(started, containers={down})
+        ctx.on.pebble_check_failed(down, check),
+        dataclasses.replace(started, containers={down, STATSD}),
     )
 
     assert isinstance(state_out.unit_status, testing.WaitingStatus)
     assert "ready" in state_out.unit_status.message
 
 
-def test_loki_alert_rules_are_valid():
+def test_alert_rules_are_valid():
     import pathlib
 
-    rules_dir = pathlib.Path(__file__).parents[2] / "src" / "loki_alert_rules"
-    files = list(rules_dir.glob("*.yaml"))
-    assert files, "no loki alert rules found"
+    root = pathlib.Path(__file__).parents[2] / "src"
+    files = list((root / "loki_alert_rules").glob("*.yaml")) + list(
+        (root / "prometheus_alert_rules").glob("*.yaml")
+    )
+    assert len(files) >= 2, "expected both loki and prometheus alert rules"
     total = 0
     for path in files:
         doc = yaml.safe_load(path.read_text())

@@ -137,3 +137,21 @@ def test_non_leader_reads_credentials_from_secret(ctx, monkeypatch):
     assert container_out.service_statuses["relay"] == ops.pebble.ServiceStatus.ACTIVE
     fs = container_out.get_filesystem(ctx)
     assert (fs / "work" / ".relay" / "config.yml").exists()
+
+
+def test_loki_alert_rules_are_valid():
+    import pathlib
+
+    rules_dir = pathlib.Path(__file__).parents[2] / "src" / "loki_alert_rules"
+    files = list(rules_dir.glob("*.yaml"))
+    assert files, "no loki alert rules found"
+    total = 0
+    for path in files:
+        doc = yaml.safe_load(path.read_text())
+        for group in doc["groups"]:
+            for rule in group["rules"]:
+                total += 1
+                assert rule["alert"] and rule["expr"]
+                assert rule["labels"]["severity"] in ("critical", "warning", "info")
+                assert "%%juju_topology%%" in rule["expr"]
+    assert total

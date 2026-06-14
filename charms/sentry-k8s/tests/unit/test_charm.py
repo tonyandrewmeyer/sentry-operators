@@ -261,3 +261,28 @@ def test_no_dsn_published_without_a_relay(ctx, monkeypatch):
     state_out = ctx.run(ctx.on.relation_changed(dsn), state_in)
 
     assert state_out.get_relation(dsn.id).local_app_data == {}
+
+
+def test_loki_alert_rules_are_valid():
+    _assert_alert_rules("loki_alert_rules", topology_required=True)
+
+
+def _assert_alert_rules(subdir: str, *, topology_required: bool) -> None:
+    import pathlib
+
+    import yaml
+
+    rules_dir = pathlib.Path(__file__).parents[2] / "src" / subdir
+    files = list(rules_dir.glob("*.yaml"))
+    assert files, f"no alert rules found in {subdir}"
+    total = 0
+    for path in files:
+        doc = yaml.safe_load(path.read_text())
+        for group in doc["groups"]:
+            for rule in group["rules"]:
+                total += 1
+                assert rule["alert"] and rule["expr"]
+                assert rule["labels"]["severity"] in ("critical", "warning", "info")
+                if topology_required:
+                    assert "%%juju_topology%%" in rule["expr"]
+    assert total

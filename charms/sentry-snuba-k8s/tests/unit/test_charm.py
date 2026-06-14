@@ -107,3 +107,23 @@ def test_publishes_url_to_requirer(ctx, monkeypatch):
     data = state_out.get_relation(snuba_rel.id).local_app_data
     assert data["url"].endswith(":1218")
     assert data["url"].startswith("http://sentry-snuba-k8s.")
+
+
+def test_loki_alert_rules_are_valid():
+    import pathlib
+
+    import yaml
+
+    rules_dir = pathlib.Path(__file__).parents[2] / "src" / "loki_alert_rules"
+    files = list(rules_dir.glob("*.yaml"))
+    assert files, "no loki alert rules found"
+    total = 0
+    for path in files:
+        doc = yaml.safe_load(path.read_text())
+        for group in doc["groups"]:
+            for rule in group["rules"]:
+                total += 1
+                assert rule["alert"] and rule["expr"]
+                assert rule["labels"]["severity"] in ("critical", "warning", "info")
+                assert "%%juju_topology%%" in rule["expr"]
+    assert total

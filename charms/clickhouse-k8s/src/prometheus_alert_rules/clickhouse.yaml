@@ -1,0 +1,47 @@
+# Metric-based alerts for ClickHouse, scraped from its native Prometheus
+# endpoint (see MetricsEndpointProvider in the charm). The `%%juju_topology%%`
+# stub is replaced with this unit's Juju topology by the prometheus_scrape
+# library, scoping every alert to this application.
+groups:
+  - name: clickhouse_metrics
+    rules:
+      # The scrape target is unreachable: the server is down or not serving its
+      # metrics port. Snuba (and therefore Sentry search/event storage) depends
+      # on ClickHouse being up.
+      - alert: ClickHouseDown
+        expr: up{%%juju_topology%%} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ClickHouse is down ({{ $labels.juju_unit }})"
+          description: >
+            Prometheus cannot scrape ClickHouse for more than 5 minutes. Snuba
+            cannot store or query events while ClickHouse is unavailable.
+
+      # ClickHouse throws on insert once a partition exceeds parts_to_throw_insert
+      # (default 300). Approaching that ceiling means Snuba writes are about to
+      # fail; alert early so the merge backlog can be investigated.
+      - alert: ClickHouseTooManyParts
+        expr: ClickHouseAsyncMetrics_MaxPartCountForPartition{%%juju_topology%%} > 200
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ClickHouse partition part-count is high ({{ $labels.juju_unit }})"
+          description: >
+            A partition is approaching parts_to_throw_insert (default 300).
+            ClickHouse will start rejecting Snuba's inserts if the merge backlog
+            is not cleared.
+
+      # A replica flipping read-only stops accepting writes entirely.
+      - alert: ClickHouseReadOnly
+        expr: ClickHouseMetrics_ReadonlyReplica{%%juju_topology%%} > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ClickHouse has a read-only replica ({{ $labels.juju_unit }})"
+          description: >
+            ClickHouse reports a read-only replica and will reject inserts from
+            Snuba until it recovers.

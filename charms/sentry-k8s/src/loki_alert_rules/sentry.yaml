@@ -1,0 +1,62 @@
+# Log-based alerts for the Sentry application tier. These fire off the Pebble
+# logs the charm forwards to Loki, so they need no metrics pipeline. The
+# `%%juju_topology%%` stub is replaced with this unit's Juju topology by the
+# loki_push_api library, scoping every alert to this application.
+groups:
+  - name: sentry_application
+    rules:
+      # Kafka is the spine of Sentry's ingest. A consumer that cannot find its
+      # topic (e.g. topics were never created) drops events silently, so treat
+      # any UNKNOWN_TOPIC_OR_PART as a page-worthy condition.
+      - alert: SentryKafkaTopicMissing
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)unknown_topic_or_part|unknown topic or partition` [10m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sentry is missing a Kafka topic ({{ $labels.juju_unit }})"
+          description: >
+            A Sentry consumer is logging UNKNOWN_TOPIC_OR_PART, which means a
+            required Kafka topic does not exist. Events routed through that topic
+            are being dropped. Check that topic creation ran during bootstrap.
+
+      # A consumer stuck in a rebalance loop is not making progress on its
+      # partitions; sustained rebalancing means ingest is backing up.
+      - alert: SentryConsumerRebalanceStorm
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)rebalanc(e|ing)` [5m])) > 20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sentry Kafka consumers are rebalancing repeatedly ({{ $labels.juju_unit }})"
+          description: >
+            Sustained consumer-group rebalancing usually means a consumer is
+            crash-looping or failing its health checks, delaying event ingestion.
+
+      # Database / cache connectivity loss takes the whole tier down.
+      - alert: SentryBackendConnectionErrors
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)operationalerror|could not connect|connection refused|connection reset` [5m])) > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sentry cannot reach a backend ({{ $labels.juju_unit }})"
+          description: >
+            Repeated connection errors to PostgreSQL, Redis or Kafka. The web UI
+            and workers cannot function without their backends.
+
+      # Broad safety net: a sustained spike of tracebacks/critical errors.
+      - alert: SentryHighErrorRate
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)traceback \(most recent call last\)|\bcritical\b` [5m])) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated error rate in Sentry logs ({{ $labels.juju_unit }})"
+          description: >
+            More than 50 traceback/critical log lines in 5 minutes, sustained for
+            10 minutes. Inspect the Sentry logs for a recurring failure.

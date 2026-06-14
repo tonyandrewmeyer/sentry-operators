@@ -1,0 +1,32 @@
+# Log-based alerts for ClickHouse. These fire off the Pebble logs the charm
+# forwards to Loki, complementing the metric-based alerts in
+# prometheus_alert_rules. The `%%juju_topology%%` stub is replaced with this
+# unit's Juju topology by the loki_push_api library.
+groups:
+  - name: clickhouse_application
+    rules:
+      # ClickHouse rejects inserts when a part-merge backlog builds up
+      # ("too many parts"); under Sentry this throttles Snuba's writes.
+      - alert: ClickHouseTooManyParts
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)too many parts` [5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ClickHouse is rejecting inserts: too many parts ({{ $labels.juju_unit }})"
+          description: >
+            ClickHouse cannot merge parts fast enough and is throttling inserts.
+            Snuba writes will slow or fail until the backlog clears.
+
+      - alert: ClickHouseExceptions
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `<Error>|DB::Exception` [5m])) > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated ClickHouse error rate ({{ $labels.juju_unit }})"
+          description: >
+            Sustained ClickHouse <Error>/exception log lines. Inspect the
+            ClickHouse logs for failing queries or inserts.

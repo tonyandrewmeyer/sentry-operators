@@ -1,0 +1,46 @@
+# Log-based alerts for Snuba (Sentry's ClickHouse query/ingest layer). These
+# fire off the Pebble logs the charm forwards to Loki. The `%%juju_topology%%`
+# stub is replaced with this unit's Juju topology by the loki_push_api library.
+groups:
+  - name: snuba_application
+    rules:
+      # Snuba's consumers write events into ClickHouse. Write failures mean
+      # events reach Kafka but never become searchable, so search/event storage
+      # silently rots even though issues still appear in Postgres.
+      - alert: SnubaClickHouseWriteErrors
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)clickhouse.*error|error.*clickhouse|cannot write|insert.*failed` [5m])) > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Snuba cannot write to ClickHouse ({{ $labels.juju_unit }})"
+          description: >
+            Snuba's consumers are logging ClickHouse write errors. Events are
+            being ingested into Kafka but not stored in ClickHouse, so search and
+            event detail will be incomplete.
+
+      # If migrations never ran, Snuba has no tables and every write fails.
+      - alert: SnubaMigrationErrors
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)migration.*(error|failed)|table.*does.?n.?t exist|unknown table` [10m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Snuba schema/migration errors ({{ $labels.juju_unit }})"
+          description: >
+            Snuba is logging missing-table or migration errors. The ClickHouse
+            schema is likely not migrated; run the Snuba migrations.
+
+      - alert: SnubaConsumerRebalanceStorm
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)rebalanc(e|ing)` [5m])) > 20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Snuba Kafka consumers are rebalancing repeatedly ({{ $labels.juju_unit }})"
+          description: >
+            Sustained rebalancing means a Snuba consumer is crash-looping,
+            delaying ingestion of events into ClickHouse.

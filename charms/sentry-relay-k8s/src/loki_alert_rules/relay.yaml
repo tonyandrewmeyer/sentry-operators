@@ -1,0 +1,46 @@
+# Log-based alerts for Relay (Sentry's event intake front door). These fire off
+# the Pebble logs the charm forwards to Loki. The `%%juju_topology%%` stub is
+# replaced with this unit's Juju topology by the loki_push_api library.
+groups:
+  - name: relay_application
+    rules:
+      # Relay is the ingest endpoint: the web tier does not publish to
+      # ingest-events, Relay does. If Relay cannot publish to Kafka, no events
+      # are ingested at all, so this is the most critical relay failure.
+      - alert: RelayKafkaPublishErrors
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)kafka.*(error|failed)|failed to (produce|send)|producer.*error` [5m])) > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Relay cannot publish events to Kafka ({{ $labels.juju_unit }})"
+          description: >
+            Relay is failing to produce to Kafka. Incoming events are being
+            dropped before they reach Sentry's ingest pipeline.
+
+      # Relay must authenticate to the upstream Sentry web tier; auth failures
+      # mean it cannot fetch project configs and will reject events.
+      - alert: RelayUpstreamAuthErrors
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)auth.*(failed|error)|could not authenticate|401|403` [5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Relay cannot authenticate to the Sentry upstream ({{ $labels.juju_unit }})"
+          description: >
+            Relay is logging authentication errors against the Sentry web tier.
+            It may be unable to load project configuration and could reject events.
+
+      - alert: RelayHighErrorRate
+        expr: |
+          sum(count_over_time({%%juju_topology%%} |~ `(?i)\berror\b|panic` [5m])) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated error rate in Relay logs ({{ $labels.juju_unit }})"
+          description: >
+            More than 50 error/panic log lines in 5 minutes, sustained for 10
+            minutes. Inspect the Relay logs.

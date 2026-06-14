@@ -136,3 +136,25 @@ def test_non_leader_does_not_publish(ctx, monkeypatch):
     state_out = ctx.run(ctx.on.relation_joined(relation), state_in)
 
     assert state_out.get_relation(relation.id).local_app_data == {}
+
+
+def test_alert_rules_are_valid():
+    import pathlib
+
+    import yaml
+
+    root = pathlib.Path(__file__).parents[2] / "src"
+    files = list((root / "loki_alert_rules").glob("*.yaml")) + list(
+        (root / "prometheus_alert_rules").glob("*.yaml")
+    )
+    assert len(files) >= 2, "expected both loki and prometheus alert rules"
+    total = 0
+    for path in files:
+        doc = yaml.safe_load(path.read_text())
+        for group in doc["groups"]:
+            for rule in group["rules"]:
+                total += 1
+                assert rule["alert"] and rule["expr"]
+                assert rule["labels"]["severity"] in ("critical", "warning", "info")
+                assert "%%juju_topology%%" in rule["expr"]
+    assert total

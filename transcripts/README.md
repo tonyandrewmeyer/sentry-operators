@@ -16,6 +16,14 @@ charm set, generated with [`claude-code-transcripts`](https://pypi.org/project/c
   deploying the full Sentry core (postgres/redis/kafka/clickhouse/snuba/sentry)
   and working through the storage-mount, Kafka relation, and Kafka
   topic-creation issues to a healthy, event-serving stack.
+- **[03-charm-excellence](03-charm-excellence/index.html)** — a polish pass
+  taking the charms from "works" to production-grade: holistic-reconcile fixes
+  (secret rotation, self-healing DSNs, symbolicator toggle), Loki/Prometheus
+  alert rules, day-2 actions (get-admin-password / pause / resume), retention
+  cleanup via a Pebble notice, Pebble health-check status handling, real metrics
+  through a statsd-exporter sidecar, broadened integration tests, a dependency
+  refresh, and Kafka consumer-lag plus Relay ingest alerts — validated against
+  the live deployment.
 
 These are a development record, not user documentation — see [`../docs`](../docs)
 for that.

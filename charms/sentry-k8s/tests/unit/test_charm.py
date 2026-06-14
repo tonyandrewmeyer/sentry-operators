@@ -3,6 +3,8 @@
 
 """Unit tests for the sentry-k8s charm."""
 
+import dataclasses
+
 import ops
 import pytest
 from ops import testing
@@ -80,6 +82,49 @@ def test_services_started_when_ready(ctx, monkeypatch):
     assert services["web"] == ops.pebble.ServiceStatus.ACTIVE
     assert "events-consumer" in services
     assert "transactions-consumer" not in services
+
+
+def test_smtp_password_read_from_secret(ctx, monkeypatch):
+    # A secret-backed config option must be resolved and rendered into config.yml.
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    secret = testing.Secret({"password": "hunter2"})
+    state_in = testing.State(
+        containers=_containers(),
+        relations={peer},
+        secrets={secret},
+        leader=True,
+        config={"smtp-host": "smtp.example.com", "smtp-password": secret.id},
+    )
+
+    state_out = ctx.run(ctx.on.secret_changed(secret), state_in)
+
+    fs = state_out.get_container(SENTRY_CONTAINER).get_filesystem(ctx)
+    config_yml = (fs / "etc/sentry/config.yml").read_text()
+    assert "mail.host: 'smtp.example.com'" in config_yml
+    assert "mail.password: 'hunter2'" in config_yml
+
+
+def test_symbolicator_stopped_when_disabled(ctx, monkeypatch):
+    # Toggling enable-symbolicator true->false must actually stop the service.
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(containers=_containers(), relations={peer}, leader=True)
+
+    enabled = ctx.run(ctx.on.config_changed(), state_in)
+    assert (
+        enabled.get_container("symbolicator").service_statuses["symbolicator"]
+        == ops.pebble.ServiceStatus.ACTIVE
+    )
+
+    disabled = ctx.run(
+        ctx.on.config_changed(),
+        dataclasses.replace(enabled, config={"enable-symbolicator": False}),
+    )
+    assert (
+        disabled.get_container("symbolicator").service_statuses["symbolicator"]
+        == ops.pebble.ServiceStatus.INACTIVE
+    )
 
 
 def test_taskbroker_and_symbolicator_started(ctx, monkeypatch):
@@ -176,6 +221,31 @@ def test_publishes_dsn_on_request(ctx, monkeypatch):
     assert data["project-id"] == "2"
     assert "abc123" in data["dsn"]
     assert "sentry-relay-k8s" in data["dsn"]
+    assert data["dsn"].endswith(":3000/2")
+
+
+def test_publishes_dsn_on_reconcile(ctx, monkeypatch):
+    # The requirer integrated before Sentry was ready, so the dsn_requested event
+    # came and went with nothing to publish. A later reconcile (here a plain
+    # config_changed) must still provision and publish the DSN.
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    relay = testing.Relation("sentry-relay", remote_app_name="sentry-relay-k8s")
+    dsn = testing.Relation(
+        "sentry-dsn",
+        remote_app_name="demo-app",
+        remote_app_data={"project-name": "demo-app", "platform": "python"},
+    )
+    state_in = testing.State(
+        containers=_containers_with_provision(),
+        relations={peer, relay, dsn},
+        leader=True,
+    )
+
+    state_out = ctx.run(ctx.on.config_changed(), state_in)
+
+    data = state_out.get_relation(dsn.id).local_app_data
+    assert data["public-key"] == "abc123"
     assert data["dsn"].endswith(":3000/2")
 
 

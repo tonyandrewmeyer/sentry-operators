@@ -82,6 +82,11 @@ class SentryK8SCharm(ops.CharmBase):
             self.on[SYMBOLICATOR_CONTAINER].pebble_ready,
             self.on.config_changed,
             self.on.upgrade_charm,
+            # Pick up a rotated smtp-password user secret: nothing else fires
+            # when its owner changes the secret's content. (Pod restarts already
+            # come through pebble-ready, and backend changes through the
+            # data-platform libs' own events, so no lifecycle backstop is needed.)
+            self.on.secret_changed,
             self.on[PEER_RELATION].relation_created,
             self.database.on.database_created,
             self.database.on.endpoints_changed,
@@ -208,6 +213,7 @@ class SentryK8SCharm(ops.CharmBase):
         self.sentry_container.replan()
 
         self._publish_endpoints()
+        self._reconcile_dsns()
 
     def _push_sentry_config(
         self, postgres: sentry.PostgresInfo, kafka: sentry.KafkaInfo, redis: sentry.RedisInfo
@@ -251,6 +257,10 @@ class SentryK8SCharm(ops.CharmBase):
         if not self.symbolicator_container.can_connect():
             return
         if not bool(self.config["enable-symbolicator"]):
+            # Drive the desired state to "off": a true->false toggle must
+            # actually stop a running symbolicator, not just leave it be.
+            if "symbolicator" in self.symbolicator_container.get_services():
+                self.symbolicator_container.stop("symbolicator")
             return
         self.symbolicator_container.push(
             sentry.SYMBOLICATOR_CONFIG_YML, sentry.render_symbolicator_config(), make_dirs=True
@@ -438,10 +448,30 @@ class SentryK8SCharm(ops.CharmBase):
             return None
         return f"{relation.app.name}.{self.model.name}.svc.cluster.local"
 
+    def _reconcile_dsns(self) -> None:
+        """Publish a DSN to any requirer still waiting for one.
+
+        Driven from reconcile (not only the ``dsn_requested`` relation event) so
+        a requirer that integrated before Sentry was bootstrapped, or before a
+        Relay was related, still gets its DSN once those prerequisites appear.
+        Relations that already have a published DSN are left untouched; a changed
+        request is handled by :meth:`_on_dsn_requested`.
+        """
+        if not self.unit.is_leader() or not self.sentry_container.can_connect():
+            return
+        for relation in self.model.relations[DSN_RELATION]:
+            if relation.data[self.app].get("dsn"):
+                continue
+            self._provision_and_publish_dsn(relation)
+
     def _on_dsn_requested(self, event: ops.RelationEvent) -> None:
         """Provision a project/key for a related app and publish its DSN."""
         if not self.unit.is_leader() or not self.sentry_container.can_connect():
             return
+        self._provision_and_publish_dsn(event.relation)
+
+    def _provision_and_publish_dsn(self, relation: ops.Relation) -> None:
+        """Provision a project/key for one related app and publish its DSN."""
         # A DSN is only useful once Sentry is bootstrapped and a Relay (the event
         # ingest endpoint) is related; otherwise wait for a later event.
         snuba_url = self.snuba.url
@@ -449,11 +479,11 @@ class SentryK8SCharm(ops.CharmBase):
         relay_host = self._relay_host()
         if not (snuba_url and secret_key and relay_host):
             return
-        project = self.sentry_dsn.requested_project(event.relation)
+        project = self.sentry_dsn.requested_project(relation)
         if not project:
             return
-        platform = self.sentry_dsn.requested_platform(event.relation)
-        environment = self.sentry_dsn.requested_environment(event.relation) or self.model.name
+        platform = self.sentry_dsn.requested_platform(relation)
+        environment = self.sentry_dsn.requested_environment(relation) or self.model.name
 
         env = sentry.sentry_environment(
             snuba_url=snuba_url,
@@ -480,7 +510,7 @@ class SentryK8SCharm(ops.CharmBase):
         ingest_url = f"http://{relay_host}:{RELAY_PORT}"
         dsn = f"http://{public_key}@{relay_host}:{RELAY_PORT}/{project_id}"
         self.sentry_dsn.publish_dsn(
-            event.relation,
+            relation,
             dsn=dsn,
             public_key=public_key,
             project_id=project_id,

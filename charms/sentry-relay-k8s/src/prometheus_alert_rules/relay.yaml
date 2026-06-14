@@ -1,12 +1,8 @@
 # Metric-based alerts for Relay. Relay emits statsd, which the statsd-exporter
 # sidecar re-exposes for Prometheus (see the MetricsEndpointProvider in the
 # charm). The `%%juju_topology%%` stub is replaced with this unit's Juju topology
-# by the prometheus_scrape library.
-#
-# Note: this ships the signal that is certain to exist -- the scrape target being
-# reachable. Alerts on specific Relay statsd series (e.g. event.accepted /
-# event.rejected) are left out until their exporter-munged names are confirmed
-# against a running deployment, to avoid shipping alerts that never fire.
+# by the prometheus_scrape library. Metric names are taken from a running 26.5.2
+# deployment.
 groups:
   - name: relay_metrics
     rules:
@@ -21,3 +17,59 @@ groups:
             Prometheus has not scraped the Relay statsd-exporter for 5 minutes.
             The unit is likely down or its metrics sidecar is not running, leaving
             the event-intake front door unmonitored.
+
+  # Relay is the event-intake front door (the web tier does not ingest), so its
+  # ability to reach the upstream and drain its buffer is the ingest lifeline.
+  - name: relay_ingest
+    rules:
+      - alert: RelayUpstreamOutage
+        # A 0/1 gauge: 1 means Relay has lost its connection to the Sentry
+        # upstream, so it cannot fetch project configs or forward events.
+        expr: sentry_relay_upstream_network_outage{%%juju_topology%%} > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Relay has lost its connection to the Sentry upstream ({{ $labels.juju_unit }})"
+          description: >
+            Relay is reporting an upstream network outage. It cannot reach the
+            Sentry web tier, so events are being rejected at the front door.
+
+      - alert: RelayEnvelopeBacklog
+        # Envelopes buffer in memory when Relay cannot drain them downstream;
+        # a sustained backlog means events are piling up. Threshold is a starting
+        # point -- tune to the deployment's throughput.
+        expr: sentry_relay_buffer_envelopes_count{%%juju_topology%%} > 10000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Relay's envelope buffer is backing up ({{ $labels.juju_unit }})"
+          description: >
+            Relay has buffered more than 10k envelopes for 15 minutes; it is
+            accepting events faster than it can forward them.
+
+      - alert: RelayServiceBackPressure
+        # Per-service gauge; non-zero means that service is overloaded and
+        # applying back-pressure upstream.
+        expr: sentry_relay_service_back_pressure{%%juju_topology%%} > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Relay service under back-pressure ({{ $labels.juju_unit }})"
+          description: >
+            Relay's {{ $labels.service }} has applied back-pressure for 10
+            minutes, indicating it cannot keep up with the load.
+
+      - alert: RelayServerErrors
+        # 5xx responses to clients mean events are being dropped at intake.
+        expr: rate(sentry_relay_responses_status_codes{%%juju_topology%%, status_code=~"5.."}[5m]) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Relay is returning server errors ({{ $labels.juju_unit }})"
+          description: >
+            Relay is responding with 5xx (route {{ $labels.route }}) above 1/s,
+            so client SDKs' events are being rejected.

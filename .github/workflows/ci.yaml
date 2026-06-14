@@ -41,6 +41,31 @@ jobs:
         run: tox -e unit
         working-directory: ${{ matrix.charm }}
 
+  library:
+    name: Lint & unit (${{ matrix.library }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        library:
+          - libs/sentry-dsn
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Lint
+        run: |
+          uvx ruff check src tests
+          uvx ruff format --check src tests
+        working-directory: ${{ matrix.library }}
+
+      - name: Unit tests
+        run: uv run --group unit pytest tests/unit -q
+        working-directory: ${{ matrix.library }}
+
   pack:
     name: Pack (${{ matrix.charm }})
     runs-on: ubuntu-24.04

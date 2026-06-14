@@ -17,10 +17,10 @@ repos:
       - id: ruff
         name: ruff (lint)
         args: [--fix]
-        exclude: '(^|/)(lib/charms/|\.reference/)'
+        exclude: '(^|/)(lib/charms/|library/|\.reference/)'
       - id: ruff-format
         name: ruff (format)
-        exclude: '(^|/)(lib/charms/|\.reference/)'
+        exclude: '(^|/)(lib/charms/|library/|\.reference/)'
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1

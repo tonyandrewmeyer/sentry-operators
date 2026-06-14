@@ -135,3 +135,59 @@ def test_create_admin_action(ctx, monkeypatch):
     assert ctx.action_results is not None
     assert ctx.action_results["email"] == "admin@example.com"
     assert "password-secret" in ctx.action_results
+
+
+# The provisioning script prints the DSN parts on stdout; ["python3"] matches it.
+_PROVISION_EXEC = testing.Exec(
+    ["python3"], return_code=0, stdout="PUBLIC_KEY=abc123\nPROJECT_ID=2\n"
+)
+
+
+def _containers_with_provision():
+    sentry_c = testing.Container(
+        SENTRY_CONTAINER, can_connect=True, execs={SENTRY_EXEC, _PROVISION_EXEC}
+    )
+    return {
+        sentry_c,
+        testing.Container("taskbroker", can_connect=True),
+        testing.Container("symbolicator", can_connect=True),
+    }
+
+
+def test_publishes_dsn_on_request(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    relay = testing.Relation("sentry-relay", remote_app_name="sentry-relay-k8s")
+    dsn = testing.Relation(
+        "sentry-dsn",
+        remote_app_name="demo-app",
+        remote_app_data={"project-name": "demo-app", "platform": "python"},
+    )
+    state_in = testing.State(
+        containers=_containers_with_provision(),
+        relations={peer, relay, dsn},
+        leader=True,
+    )
+
+    state_out = ctx.run(ctx.on.relation_changed(dsn), state_in)
+
+    data = state_out.get_relation(dsn.id).local_app_data
+    assert data["public-key"] == "abc123"
+    assert data["project-id"] == "2"
+    assert "abc123" in data["dsn"]
+    assert "sentry-relay-k8s" in data["dsn"]
+    assert data["dsn"].endswith(":3000/2")
+
+
+def test_no_dsn_published_without_a_relay(ctx, monkeypatch):
+    # Events have nowhere to be ingested without a Relay, so no DSN is offered.
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    dsn = testing.Relation("sentry-dsn", remote_app_name="demo-app")
+    state_in = testing.State(
+        containers=_containers_with_provision(), relations={peer, dsn}, leader=True
+    )
+
+    state_out = ctx.run(ctx.on.relation_changed(dsn), state_in)
+
+    assert state_out.get_relation(dsn.id).local_app_data == {}

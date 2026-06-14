@@ -112,6 +112,10 @@ class SentryK8SCharm(ops.CharmBase):
         framework.observe(self.on.resume_action, self._on_resume)
         framework.observe(self.sentry_dsn.on.dsn_requested, self._on_dsn_requested)
         framework.observe(self.on[SENTRY_CONTAINER].pebble_custom_notice, self._on_cleanup_notice)
+        framework.observe(self.on[SENTRY_CONTAINER].pebble_check_failed, self._on_check_failed)
+        framework.observe(
+            self.on[SENTRY_CONTAINER].pebble_check_recovered, self._on_check_recovered
+        )
 
     # -- relation data --------------------------------------------------------
 
@@ -639,6 +643,24 @@ class SentryK8SCharm(ops.CharmBase):
             return self._charm_tracing.get_endpoint("otlp_http")
         return None
 
+    # -- health checks --------------------------------------------------------
+
+    def _on_check_failed(self, event: ops.PebbleCheckFailedEvent) -> None:
+        logger.warning("Pebble health check %r is failing", event.info.name)
+
+    def _on_check_recovered(self, event: ops.PebbleCheckRecoveredEvent) -> None:
+        logger.info("Pebble health check %r recovered", event.info.name)
+
+    def _failing_checks(self) -> list[str]:
+        """Names of this unit's Pebble checks that are currently down."""
+        if not self.sentry_container.can_connect():
+            return []
+        return [
+            check.name
+            for check in self.sentry_container.get_checks().values()
+            if check.status != ops.pebble.CheckStatus.UP
+        ]
+
     # -- status ---------------------------------------------------------------
 
     def _on_collect_status(self, event: ops.CollectStatusEvent) -> None:
@@ -655,6 +677,10 @@ class SentryK8SCharm(ops.CharmBase):
         services = self.sentry_container.get_services()
         if "web" not in services or not services["web"].is_running():
             event.add_status(ops.MaintenanceStatus("starting Sentry"))
+            return
+        failing = self._failing_checks()
+        if failing:
+            event.add_status(ops.WaitingStatus(f"health check failing: {', '.join(failing)}"))
             return
         event.add_status(ops.ActiveStatus())
 

@@ -3,6 +3,8 @@
 
 """Unit tests for the sentry-snuba-k8s charm."""
 
+import dataclasses
+
 import ops
 import pytest
 from charms.clickhouse_k8s.v0.clickhouse import ClickHouseConnection
@@ -107,6 +109,29 @@ def test_publishes_url_to_requirer(ctx, monkeypatch):
     data = state_out.get_relation(snuba_rel.id).local_app_data
     assert data["url"].endswith(":1218")
     assert data["url"].startswith("http://sentry-snuba-k8s.")
+
+
+def test_failing_health_check_sets_waiting(ctx, monkeypatch):
+    _wire_backends(monkeypatch)
+    container = testing.Container(CONTAINER, can_connect=True)
+    state_in = testing.State(
+        containers={container}, leader=False, config={"feature-complete": False}
+    )
+
+    started = ctx.run(ctx.on.config_changed(), state_in)  # installs the api-ready check
+    check = testing.CheckInfo(
+        "api-ready",
+        level=ops.pebble.CheckLevel.READY,
+        startup=ops.pebble.CheckStartup.UNSET,
+        status=ops.pebble.CheckStatus.DOWN,
+    )
+    down = dataclasses.replace(started.get_container(CONTAINER), check_infos={check})
+    state_out = ctx.run(
+        ctx.on.pebble_check_failed(down, check), dataclasses.replace(started, containers={down})
+    )
+
+    assert isinstance(state_out.unit_status, testing.WaitingStatus)
+    assert "api-ready" in state_out.unit_status.message
 
 
 def test_loki_alert_rules_are_valid():

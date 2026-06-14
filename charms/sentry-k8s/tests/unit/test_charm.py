@@ -123,6 +123,52 @@ def test_cleanup_notice_skipped_on_non_leader(ctx, monkeypatch):
     ctx.run(ctx.on.pebble_custom_notice(sentry_c, notice), state_in)
 
 
+def _with_check(state, container_name, status):
+    """Return (state, container, check) with a check in the named container.
+
+    The container must already carry the plan's check (so run a reconcile first);
+    this marks it up or down so the check events and status logic can be exercised.
+    """
+    check = testing.CheckInfo(
+        "web-ready",
+        level=ops.pebble.CheckLevel.READY,
+        startup=ops.pebble.CheckStartup.UNSET,
+        status=status,
+    )
+    container = dataclasses.replace(state.get_container(container_name), check_infos={check})
+    others = {c for c in state.containers if c.name != container_name}
+    return dataclasses.replace(state, containers={container, *others}), container, check
+
+
+def test_failing_health_check_sets_waiting(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(
+        containers=_containers(), relations={peer}, leader=True, config={"feature-complete": False}
+    )
+
+    started = ctx.run(ctx.on.config_changed(), state_in)  # installs the web-ready check
+    state2, container, check = _with_check(started, SENTRY_CONTAINER, ops.pebble.CheckStatus.DOWN)
+    state_out = ctx.run(ctx.on.pebble_check_failed(container, check), state2)
+
+    assert isinstance(state_out.unit_status, testing.WaitingStatus)
+    assert "web-ready" in state_out.unit_status.message
+
+
+def test_check_recovered_event_restores_active(ctx, monkeypatch):
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    state_in = testing.State(
+        containers=_containers(), relations={peer}, leader=True, config={"feature-complete": False}
+    )
+
+    started = ctx.run(ctx.on.config_changed(), state_in)
+    state2, container, check = _with_check(started, SENTRY_CONTAINER, ops.pebble.CheckStatus.UP)
+    state_out = ctx.run(ctx.on.pebble_check_recovered(container, check), state2)
+
+    assert isinstance(state_out.unit_status, testing.ActiveStatus)
+
+
 def test_smtp_password_read_from_secret(ctx, monkeypatch):
     # A secret-backed config option must be resolved and rendered into config.yml.
     _wire(monkeypatch)

@@ -3,6 +3,8 @@
 
 """Unit tests for the clickhouse-k8s charm."""
 
+import dataclasses
+
 import ops
 import pytest
 from ops import testing
@@ -136,6 +138,28 @@ def test_non_leader_does_not_publish(ctx, monkeypatch):
     state_out = ctx.run(ctx.on.relation_joined(relation), state_in)
 
     assert state_out.get_relation(relation.id).local_app_data == {}
+
+
+def test_failing_health_check_sets_waiting(ctx, monkeypatch):
+    monkeypatch.setattr("charm.clickhouse.get_version", lambda *a, **k: "25.3.6")
+    monkeypatch.setattr("charm.clickhouse.is_ready", lambda *a, **k: True)
+    container = _container()
+    state_in = testing.State(containers={container}, leader=True)
+
+    started = ctx.run(ctx.on.pebble_ready(container), state_in)  # installs the ready check
+    check = testing.CheckInfo(
+        "ready",
+        level=ops.pebble.CheckLevel.READY,
+        startup=ops.pebble.CheckStartup.UNSET,
+        status=ops.pebble.CheckStatus.DOWN,
+    )
+    down = dataclasses.replace(started.get_container(CONTAINER), check_infos={check})
+    state_out = ctx.run(
+        ctx.on.pebble_check_failed(down, check), dataclasses.replace(started, containers={down})
+    )
+
+    assert isinstance(state_out.unit_status, testing.WaitingStatus)
+    assert "ready" in state_out.unit_status.message
 
 
 def test_alert_rules_are_valid():

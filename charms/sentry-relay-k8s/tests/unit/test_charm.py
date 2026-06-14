@@ -3,6 +3,8 @@
 
 """Unit tests for the sentry-relay-k8s charm."""
 
+import dataclasses
+
 import ops
 import pytest
 import yaml
@@ -137,6 +139,27 @@ def test_non_leader_reads_credentials_from_secret(ctx, monkeypatch):
     assert container_out.service_statuses["relay"] == ops.pebble.ServiceStatus.ACTIVE
     fs = container_out.get_filesystem(ctx)
     assert (fs / "work" / ".relay" / "config.yml").exists()
+
+
+def test_failing_health_check_sets_waiting(ctx, monkeypatch):
+    _wire_backends(monkeypatch)
+    peers = testing.PeerRelation("relay-peers")
+    state_in = testing.State(containers={_container()}, relations={peers}, leader=True)
+
+    started = ctx.run(ctx.on.config_changed(), state_in)  # installs the ready check
+    check = testing.CheckInfo(
+        "ready",
+        level=ops.pebble.CheckLevel.READY,
+        startup=ops.pebble.CheckStartup.UNSET,
+        status=ops.pebble.CheckStatus.DOWN,
+    )
+    down = dataclasses.replace(started.get_container(CONTAINER), check_infos={check})
+    state_out = ctx.run(
+        ctx.on.pebble_check_failed(down, check), dataclasses.replace(started, containers={down})
+    )
+
+    assert isinstance(state_out.unit_status, testing.WaitingStatus)
+    assert "ready" in state_out.unit_status.message
 
 
 def test_loki_alert_rules_are_valid():

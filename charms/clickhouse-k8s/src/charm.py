@@ -59,6 +59,8 @@ class ClickHouseK8SCharm(ops.CharmBase):
         ):
             framework.observe(event, self._reconcile)
         framework.observe(self.on.collect_unit_status, self._on_collect_status)
+        framework.observe(self.on[CONTAINER].pebble_check_failed, self._on_check_failed)
+        framework.observe(self.on[CONTAINER].pebble_check_recovered, self._on_check_recovered)
 
     def _reconcile(self, _: ops.EventBase) -> None:
         """Make the running workload match the charm's configuration."""
@@ -154,7 +156,27 @@ class ClickHouseK8SCharm(ops.CharmBase):
         if not clickhouse.is_ready():
             event.add_status(ops.WaitingStatus("waiting for ClickHouse to accept queries"))
             return
+        failing = self._failing_checks()
+        if failing:
+            event.add_status(ops.WaitingStatus(f"health check failing: {', '.join(failing)}"))
+            return
         event.add_status(ops.ActiveStatus())
+
+    def _on_check_failed(self, event: ops.PebbleCheckFailedEvent) -> None:
+        logger.warning("Pebble health check %r is failing", event.info.name)
+
+    def _on_check_recovered(self, event: ops.PebbleCheckRecoveredEvent) -> None:
+        logger.info("Pebble health check %r recovered", event.info.name)
+
+    def _failing_checks(self) -> list[str]:
+        """Names of this unit's Pebble checks that are currently down."""
+        if not self.container.can_connect():
+            return []
+        return [
+            check.name
+            for check in self.container.get_checks().values()
+            if check.status != ops.pebble.CheckStatus.UP
+        ]
 
 
 if __name__ == "__main__":  # pragma: nocover

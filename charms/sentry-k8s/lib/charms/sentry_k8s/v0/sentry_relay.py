@@ -36,7 +36,7 @@ import logging
 import ops
 
 # The unique Charmhub library identifier, never change it.
-LIBID = "5e0t0r0y0r0e0l0a0y00000000relay0"
+LIBID = "c5f3e2d07a2c6d3ebf40516273849506"
 LIBAPI = 0
 LIBPATCH = 1
 

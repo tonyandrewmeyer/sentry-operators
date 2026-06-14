@@ -376,10 +376,22 @@ class SentryK8SCharm(ops.CharmBase):
             "host": host,
             "port": str(self.config["smtp-port"]),
             "username": str(self.config["smtp-username"]),
-            "password": str(self.config["smtp-password"]),
+            "password": self._smtp_password(),
             "use_tls": str(self.config["smtp-use-tls"]),
             "from": str(self.config["mail-from"]),
         }
+
+    def _smtp_password(self) -> str:
+        """Resolve the SMTP password from its Juju user secret, if configured."""
+        secret_id = self.config.get("smtp-password")
+        if not secret_id:
+            return ""
+        try:
+            content = self.model.get_secret(id=str(secret_id)).get_content(refresh=True)
+        except (ops.SecretNotFoundError, ops.ModelError):
+            logger.warning("Could not read the smtp-password secret %r", secret_id)
+            return ""
+        return content.get("password", "")
 
     # -- actions --------------------------------------------------------------
 

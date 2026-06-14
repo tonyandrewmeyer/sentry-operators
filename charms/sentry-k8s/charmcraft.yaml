@@ -111,9 +111,12 @@ config:
       default: ""
       type: string
     smtp-password:
-      description: SMTP password.
-      default: ""
-      type: string
+      description: |
+        A Juju user secret holding the SMTP password under a ``password`` key,
+        e.g. ``juju add-secret sentry-smtp password=hunter2`` then
+        ``juju config sentry-k8s smtp-password=secret:<id>`` (after granting the
+        charm access). Empty leaves the SMTP password unset.
+      type: secret
     smtp-use-tls:
       description: Use STARTTLS for SMTP.
       default: true

@@ -56,7 +56,7 @@ import ops
 
 # The unique Charmhub library identifier, never change it.
 # (Placeholder for an internal, not-yet-published library.)
-LIBID = "0c1k0h0u0s0e0000000000000000clk0"
+LIBID = "a3f1c0de5e0a4b1c9d2e3f4051627384"
 
 # Increment this major API version when introducing breaking changes.
 LIBAPI = 0

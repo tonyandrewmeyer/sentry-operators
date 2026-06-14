@@ -111,6 +111,7 @@ class SentryK8SCharm(ops.CharmBase):
         framework.observe(self.on.pause_action, self._on_pause)
         framework.observe(self.on.resume_action, self._on_resume)
         framework.observe(self.sentry_dsn.on.dsn_requested, self._on_dsn_requested)
+        framework.observe(self.on[SENTRY_CONTAINER].pebble_custom_notice, self._on_cleanup_notice)
 
     # -- relation data --------------------------------------------------------
 
@@ -361,6 +362,17 @@ class SentryK8SCharm(ops.CharmBase):
                 "environment": env,
                 "after": [] if service.name == "web" else ["web"],
             }
+        # Enforce event retention: self-hosted Sentry relies on a nightly
+        # `sentry cleanup` cron, which the app itself does not schedule. This
+        # ticker just raises a Pebble notice once a day; the charm does the
+        # actual cleanup in _on_cleanup_notice (leader-gated and logged).
+        services["cleanup-tick"] = {
+            "override": "replace",
+            "summary": "daily event-retention cleanup ticker",
+            "command": sentry.cleanup_tick_command(),
+            "startup": "enabled",
+            "after": ["web"],
+        }
         return {
             "summary": "Sentry",
             "description": "Sentry web, task workers and consumers",
@@ -509,6 +521,35 @@ class SentryK8SCharm(ops.CharmBase):
         self._set_paused(False)
         self._reconcile(event)
         event.set_results({"status": "resumed"})
+
+    # -- retention cleanup ----------------------------------------------------
+
+    def _on_cleanup_notice(self, event: ops.PebbleNoticeEvent) -> None:
+        """Prune event data older than the retention window (leader only).
+
+        Triggered by the daily ``cleanup-tick`` Pebble service via a custom
+        notice, so the prune runs once for the application rather than in every
+        container, and the charm can log and time-box it.
+        """
+        if event.notice.key != sentry.CLEANUP_NOTICE_KEY:
+            return
+        if not self.unit.is_leader() or not self.sentry_container.can_connect():
+            return
+        snuba_url = self.snuba.url
+        secret_key = self._secret_key()
+        if not (snuba_url and secret_key):
+            return
+        days = int(self.config["event-retention-days"])  # type: ignore[arg-type]
+        env = sentry.sentry_environment(
+            snuba_url=snuba_url, secret_key=secret_key, event_retention_days=days
+        )
+        logger.info("Pruning Sentry event data older than %d days", days)
+        try:
+            self.sentry_container.exec(
+                sentry.cleanup_command(days), environment=env, timeout=3600
+            ).wait_output()
+        except ops.pebble.ExecError as exc:
+            logger.warning("sentry cleanup failed (will retry tomorrow): %s", exc)
 
     # -- sentry-dsn integration -----------------------------------------------
 

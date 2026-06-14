@@ -479,6 +479,29 @@ def create_topics_command() -> list[str]:
     return ["python3", "-c", _CREATE_TOPICS_SCRIPT]
 
 
+# Self-hosted Sentry has no built-in retention enforcement: upstream runs a
+# nightly ``sentry cleanup --days N`` cron (see .reference/docker-compose.yml),
+# which the app itself does not schedule. Pebble has no cron, so a tiny ticker
+# service raises a Pebble custom notice once a day; the charm runs the actual
+# cleanup in its notice handler, so the work is leader-gated, logged and only
+# runs once across the application rather than blindly in every container.
+CLEANUP_INTERVAL_SECONDS = 86400
+CLEANUP_NOTICE_KEY = "sentry-k8s.charmhub.io/cleanup"
+
+
+def cleanup_tick_command() -> str:
+    """Return the Pebble command that raises the daily cleanup notice."""
+    return (
+        f"sh -c 'while true; do sleep {CLEANUP_INTERVAL_SECONDS}; "
+        f"pebble notify {CLEANUP_NOTICE_KEY}; done'"
+    )
+
+
+def cleanup_command(days: int) -> list[str]:
+    """Command to prune event data older than the retention window (in days)."""
+    return ["sentry", "cleanup", "--days", str(days)]
+
+
 def createuser_command(*, email: str, password: str, superuser: bool = True) -> list[str]:
     """Command to create (or update) the first admin user.
 

@@ -82,6 +82,45 @@ def test_services_started_when_ready(ctx, monkeypatch):
     assert services["web"] == ops.pebble.ServiceStatus.ACTIVE
     assert "events-consumer" in services
     assert "transactions-consumer" not in services
+    # The retention-cleanup ticker runs regardless of the feature profile.
+    assert services["cleanup-tick"] == ops.pebble.ServiceStatus.ACTIVE
+
+
+def test_cleanup_notice_prunes_on_leader(ctx, monkeypatch):
+    # The daily ticker raises a notice; the leader runs `sentry cleanup`. The
+    # ["sentry"] exec is required, so an unmatched exec would fail the test.
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    notice = testing.Notice(key=sentry.CLEANUP_NOTICE_KEY)
+    sentry_c = testing.Container(
+        SENTRY_CONTAINER, can_connect=True, execs={SENTRY_EXEC}, notices=[notice]
+    )
+    containers = {
+        sentry_c,
+        testing.Container("taskbroker", can_connect=True),
+        testing.Container("symbolicator", can_connect=True),
+    }
+    state_in = testing.State(containers=containers, relations={peer}, leader=True)
+
+    # Succeeds only because the cleanup exec is available and gets run.
+    ctx.run(ctx.on.pebble_custom_notice(sentry_c, notice), state_in)
+
+
+def test_cleanup_notice_skipped_on_non_leader(ctx, monkeypatch):
+    # A non-leader must not run cleanup: no exec is provided, so if the handler
+    # tried to exec, the run would fail to find a matching command.
+    _wire(monkeypatch)
+    peer = testing.PeerRelation("sentry-peers")
+    notice = testing.Notice(key=sentry.CLEANUP_NOTICE_KEY)
+    sentry_c = testing.Container(SENTRY_CONTAINER, can_connect=True, notices=[notice])
+    containers = {
+        sentry_c,
+        testing.Container("taskbroker", can_connect=True),
+        testing.Container("symbolicator", can_connect=True),
+    }
+    state_in = testing.State(containers=containers, relations={peer}, leader=False)
+
+    ctx.run(ctx.on.pebble_custom_notice(sentry_c, notice), state_in)
 
 
 def test_smtp_password_read_from_secret(ctx, monkeypatch):

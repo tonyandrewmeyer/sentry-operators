@@ -145,3 +145,13 @@ def test_environment():
     assert env["SNUBA"] == "http://snuba:1218"
     assert env["SENTRY_SYSTEM_SECRET_KEY"] == "k"
     assert env["SENTRY_EVENT_RETENTION_DAYS"] == "30"
+
+
+def test_cleanup_commands():
+    # The ticker only raises the notice the charm listens for; it does not prune.
+    tick = sentry.cleanup_tick_command()
+    assert "pebble notify" in tick
+    assert sentry.CLEANUP_NOTICE_KEY in tick
+    assert str(sentry.CLEANUP_INTERVAL_SECONDS) in tick
+    # The actual prune is a plain sentry cleanup with the retention window.
+    assert sentry.cleanup_command(45) == ["sentry", "cleanup", "--days", "45"]

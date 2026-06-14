@@ -10,7 +10,7 @@ the four `sentry-operators` charms, as declared in their `charmcraft.yaml`.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `feature-complete` | boolean | `true` | Run the full feature set (transactions, metrics, profiling, replays, crons, uptime, feedback, issue platform) as well as error tracking. Disable for a smaller errors-only deployment. |
-| `event-retention-days` | int | `90` | How long event data is retained, in days. |
+| `event-retention-days` | int | `90` | How long event data is retained, in days. The charm prunes data older than this once a day (self-hosted Sentry has no built-in scheduler for it). |
 | `taskworker-concurrency` | int | `4` | Number of concurrent task worker processes. |
 | `enable-symbolicator` | boolean | `true` | Run the symbolicator service for native/JS stack-trace symbolication. |
 | `smtp-host` | string | `""` | SMTP relay host for outbound email. Empty disables email. |

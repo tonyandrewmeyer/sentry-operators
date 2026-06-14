@@ -1,12 +1,8 @@
 # Metric-based alerts for Snuba. Snuba emits statsd, which the statsd-exporter
 # sidecar re-exposes for Prometheus (see the MetricsEndpointProvider in the
 # charm). The `%%juju_topology%%` stub is replaced with this unit's Juju topology
-# by the prometheus_scrape library.
-#
-# Note: this ships the signal that is certain to exist -- the scrape target being
-# reachable. Alerts on specific Snuba statsd series are left out until their
-# exporter-munged names are confirmed against a running deployment, to avoid
-# shipping alerts that never fire.
+# by the prometheus_scrape library. Metric names are taken from a running 26.5.2
+# deployment.
 groups:
   - name: snuba_metrics
     rules:
@@ -21,3 +17,33 @@ groups:
             Prometheus has not scraped the Snuba statsd-exporter for 5 minutes.
             The unit is likely down or its metrics sidecar is not running, leaving
             Snuba unmonitored.
+
+  # Snuba's arroyo consumers write events into ClickHouse. If they stall or back
+  # up, events reach Kafka but never become searchable. The __name__ regex covers
+  # every Snuba consumer (errors writer, replacer, ...) under one rule.
+  - name: snuba_consumers
+    rules:
+      - alert: SnubaConsumersStalled
+        expr: |
+          rate({__name__=~"snuba_.+_arroyo_consumer_run_count", %%juju_topology%%}[5m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A Snuba consumer is not making progress ({{ $labels.juju_unit }})"
+          description: >
+            A Snuba arroyo consumer run-loop has not advanced for 10 minutes.
+            Events are not being written to ClickHouse; search and event storage
+            will fall behind.
+
+      - alert: SnubaConsumerFetchBacklog
+        expr: |
+          {__name__=~"snuba_.+_arroyo_consumer_librdkafka_total_queue_size", %%juju_topology%%} > 100000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A Snuba consumer is falling behind ({{ $labels.juju_unit }})"
+          description: >
+            A Snuba consumer's Kafka fetch queue has stayed above 100k messages
+            for 15 minutes; ClickHouse writes are not keeping up with ingest.

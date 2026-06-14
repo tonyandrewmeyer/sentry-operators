@@ -1,12 +1,8 @@
 # Metric-based alerts for the Sentry application tier. Sentry emits statsd, which
 # the statsd-exporter sidecar re-exposes for Prometheus (see the
 # MetricsEndpointProvider in the charm). The `%%juju_topology%%` stub is replaced
-# with this unit's Juju topology by the prometheus_scrape library.
-#
-# Note: this ships the signal that is certain to exist -- the scrape target being
-# reachable. Alerts on specific Sentry statsd series (e.g. event throughput) are
-# intentionally left out until their exporter-munged names are confirmed against
-# a running deployment, to avoid shipping alerts that never fire.
+# with this unit's Juju topology by the prometheus_scrape library. Metric names
+# are taken from a running 26.5.2 deployment.
 groups:
   - name: sentry_metrics
     rules:
@@ -21,3 +17,39 @@ groups:
             Prometheus has not scraped the Sentry statsd-exporter for 5 minutes.
             The unit is likely down or its metrics sidecar is not running, leaving
             the application tier unmonitored.
+
+  # Kafka-consumer health is the single most important Sentry ingest signal: a
+  # stalled or backlogged consumer drops events silently. The arroyo metrics are
+  # aggregated across this unit's consumer processes (they share one statsd
+  # prefix and carry no per-consumer label), so these catch the whole consumer
+  # tier wedging; for per-group/per-topic offset lag, scrape the Kafka broker.
+  - name: sentry_consumers
+    rules:
+      - alert: SentryConsumersStalled
+        # The arroyo run-loop iterates constantly when healthy; a flat counter
+        # means the consumers are alive but making no progress (rebalance loop,
+        # wedged processing), so events pile up in Kafka unprocessed.
+        expr: rate(sentry_consumer_arroyo_consumer_run_count{%%juju_topology%%}[5m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sentry Kafka consumers are not making progress ({{ $labels.juju_unit }})"
+          description: >
+            The arroyo consumer run-loop has not advanced for 10 minutes. Event
+            ingestion is stalled; check the consumer services and Kafka.
+
+      - alert: SentryConsumerFetchBacklog
+        # librdkafka pre-fetches messages into a local queue; a sustained large
+        # queue means processing cannot keep up with the incoming event rate.
+        # Threshold is a starting point -- tune to the deployment's throughput.
+        expr: sentry_consumer_arroyo_consumer_librdkafka_total_queue_size{%%juju_topology%%} > 100000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sentry consumers are falling behind ({{ $labels.juju_unit }})"
+          description: >
+            The consumers' Kafka fetch queue has stayed above 100k messages for
+            15 minutes, so events are being ingested faster than they are
+            processed. Expect growing lag and delayed issues.

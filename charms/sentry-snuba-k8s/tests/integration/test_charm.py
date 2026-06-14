@@ -49,3 +49,15 @@ def test_api_serves_health(juju: jubilant.Juju):
     """Snuba's HTTP API answers its health check on port 1218."""
     result = juju.exec(f"python3 -c {HEALTH_CHECK!r}", unit=f"{APP}/0")
     assert result.return_code == 0
+
+
+def test_statsd_metrics_exposed(juju: jubilant.Juju):
+    """The statsd-exporter sidecar re-exposes Snuba's metrics for Prometheus."""
+    fetch = (
+        "import urllib.request; "
+        "print(urllib.request.urlopen('http://localhost:9102/metrics').read().decode())"
+    )
+    result = juju.exec(f"python3 -c {fetch!r}", unit=f"{APP}/0")
+    assert result.return_code == 0
+    # Real Snuba statsd series (not just the exporter's own metrics) must appear.
+    assert "snuba" in result.stdout

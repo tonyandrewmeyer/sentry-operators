@@ -72,3 +72,76 @@ def test_web_health(juju: jubilant.Juju):
     )
     result = juju.exec(f"python3 -c {check!r}", unit=f"{APP}/0")
     assert result.return_code == 0
+
+
+def test_statsd_metrics_exposed(juju: jubilant.Juju):
+    """The statsd-exporter sidecar re-exposes Sentry's metrics for Prometheus."""
+    fetch = (
+        "import urllib.request; "
+        "print(urllib.request.urlopen('http://localhost:9102/metrics').read().decode())"
+    )
+    result = juju.exec(f"python3 -c {fetch!r}", unit=f"{APP}/0")
+    assert result.return_code == 0
+    # Real Sentry statsd series (not just the exporter's own metrics) must appear.
+    assert "sentry_" in result.stdout
+
+
+def test_feature_complete_toggle_changes_services(juju: jubilant.Juju):
+    """Enabling feature-complete starts the additional consumers."""
+    assert "transactions-consumer" not in _sentry_services(juju)
+
+    juju.config(APP, {"feature-complete": "true"})
+    juju.wait(jubilant.all_active, timeout=900, delay=10)
+
+    assert "transactions-consumer" in _sentry_services(juju)
+
+    # Restore the errors-only profile for the remaining tests.
+    juju.config(APP, {"feature-complete": "false"})
+    juju.wait(jubilant.all_active, timeout=900, delay=10)
+
+
+def test_pause_and_resume(juju: jubilant.Juju):
+    """The pause action stops the services; resume brings them back."""
+    juju.run(f"{APP}/0", "pause")
+    juju.wait(
+        lambda status: status.apps[APP].units[f"{APP}/0"].workload_status.current == "maintenance",
+        timeout=300,
+    )
+    assert "web" not in _running_sentry_services(juju)
+
+    juju.run(f"{APP}/0", "resume")
+    juju.wait(jubilant.all_active, timeout=600, delay=10)
+    assert "web" in _running_sentry_services(juju)
+
+
+def test_backend_removal_blocks_then_recovers(juju: jubilant.Juju):
+    """Removing a required backend blocks the charm; re-adding it recovers."""
+    juju.remove_relation(APP, REDIS)
+    juju.wait(
+        lambda status: "redis" in status.apps[APP].units[f"{APP}/0"].workload_status.message,
+        timeout=600,
+    )
+
+    juju.integrate(APP, REDIS)
+    juju.wait(jubilant.all_active, timeout=900, delay=10)
+
+
+# Pebble in each workload container has its own socket under /charm/containers.
+_PEBBLE = "/charm/bin/pebble"
+_SENTRY_SOCKET = "/charm/containers/sentry/pebble.socket"
+
+
+def _pebble_service_rows(juju: jubilant.Juju) -> list[list[str]]:
+    """Return the columns of each row of `pebble services` (Service Startup Current ...)."""
+    result = juju.exec(f"PEBBLE_SOCKET={_SENTRY_SOCKET} {_PEBBLE} services", unit=f"{APP}/0")
+    return [line.split() for line in result.stdout.splitlines()[1:] if line.strip()]
+
+
+def _sentry_services(juju: jubilant.Juju) -> set[str]:
+    """Return the names of the services in the Sentry container's Pebble plan."""
+    return {row[0] for row in _pebble_service_rows(juju)}
+
+
+def _running_sentry_services(juju: jubilant.Juju) -> set[str]:
+    """Return the names of the currently active Sentry services (Current column)."""
+    return {row[0] for row in _pebble_service_rows(juju) if row[2] == "active"}

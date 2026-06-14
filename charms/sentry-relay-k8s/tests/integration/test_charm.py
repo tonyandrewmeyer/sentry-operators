@@ -41,3 +41,18 @@ def test_deploy_and_integrate_backends(charm: pathlib.Path, juju: jubilant.Juju)
         return app.is_blocked and "sentry" in (app.app_status.message or "")
 
     juju.wait(_blocked_on_sentry, timeout=600)
+
+
+def test_statsd_exporter_serves_metrics(juju: jubilant.Juju):
+    """The statsd-exporter sidecar runs and serves Prometheus metrics.
+
+    The exporter is configured before the backend-readiness gate, so it is up
+    even while Relay itself is blocked on the Sentry integration.
+    """
+    fetch = (
+        "import urllib.request; "
+        "print(urllib.request.urlopen('http://localhost:9102/metrics').read().decode())"
+    )
+    result = juju.exec(f"python3 -c {fetch!r}", unit=f"{APP}/0")
+    assert result.return_code == 0
+    assert "statsd_exporter" in result.stdout

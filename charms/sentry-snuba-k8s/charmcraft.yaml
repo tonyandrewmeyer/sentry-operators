@@ -104,3 +104,10 @@ parts:
       - astral-uv
     build-packages:
       - git
+  # The uv plugin does not bundle icon.svg, so stage it explicitly; otherwise
+  # the icon would not appear on the Charmhub listing.
+  icon:
+    plugin: dump
+    source: .
+    stage:
+      - icon.svg

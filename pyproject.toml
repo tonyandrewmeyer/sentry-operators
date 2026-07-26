@@ -62,3 +62,6 @@ dev = [
     "ruff>=0.16.0",
     "zizmor>=1.28.0",
 ]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

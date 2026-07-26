@@ -7,6 +7,9 @@ on:
   pull_request:
 
 # Cancel superseded runs on the same ref to save CI minutes.
+
+permissions:
+  contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -25,10 +28,12 @@ jobs:
           - charms/sentry-k8s
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
       - name: Install tox
         run: uv tool install tox --with tox-uv
@@ -51,10 +56,12 @@ jobs:
           - libs/sentry-dsn
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
       - name: Lint
         run: |
@@ -79,18 +86,20 @@ jobs:
           - charms/sentry-k8s
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       # The canonical craft-actions pack action installs charmcraft + LXD and
       # runs `charmcraft pack` in the given working directory.
       - name: Pack charm
         id: pack
-        uses: canonical/craft-actions/charmcraft/pack@main
+        uses: canonical/craft-actions/charmcraft/pack@acd2f2e61c7563b38ba89390ca0e910fa7d2784f # v0.1.1
         with:
           path: ${{ matrix.charm }}
 
       - name: Upload packed charm
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: charm-${{ hashFiles(format('{0}/charmcraft.yaml', matrix.charm)) }}-${{ strategy.job-index }}
           path: ${{ matrix.charm }}/*.charm
@@ -111,10 +120,12 @@ jobs:
           - "."
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
 
       - name: Terraform fmt
         run: terraform fmt -check -recursive

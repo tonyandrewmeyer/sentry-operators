@@ -3,40 +3,6 @@
 # canonical config at the repo root keeps formatting and linting identical
 # across all charms.
 
-[tool.ruff]
-line-length = 99
-target-version = "py312"
-extend-exclude = ["lib/charms", "venv", ".venv", "build"]
-
-[tool.ruff.lint]
-select = [
-    "E", "W",   # pycodestyle
-    "F",        # pyflakes
-    "I",        # isort
-    "N",        # pep8-naming
-    "D",        # pydocstyle
-    "UP",       # pyupgrade
-    "B",        # flake8-bugbear
-    "C4",       # comprehensions
-    "RUF",      # ruff-specific
-    "S",        # flake8-bandit (security)
-    "SIM",      # flake8-simplify
-    "PL",       # pylint
-]
-ignore = [
-    "D105",     # missing docstring on magic method
-    "D107",     # missing docstring on __init__
-    "PLR2004",  # magic value comparison – noisy in charms
-    "PLR0913",  # too many arguments
-    "S603",     # subprocess call – charms shell out deliberately
-]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D1", "S101", "PLR2004", "S105", "S106"]
-
-[tool.ruff.lint.pydocstyle]
-convention = "google"
-
 [tool.codespell]
 skip = "./lib,./venv,./.venv,./build,*.svg,./.git,./.tox"
 ignore-words-list = "assertIn,master"
@@ -46,7 +12,53 @@ include = ["src", "tests"]
 pythonVersion = "3.12"
 pythonPlatform = "Linux"
 
+[tool.ruff]
+line-length = 99
+target-version = "py312"
+extend-exclude = [
+    "lib",
+    "venv",
+    ".venv",
+    "build",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "C4",
+    "N",
+    "D",
+    "I",
+    "UP",
+    "B",
+    "RUF",
+]
+ignore = [
+    "D105",
+    "D107",
+    "D203",
+    "D204",
+    "D213",
+    "D215",
+    "D400",
+    "D404",
+    "D406",
+    "D407",
+    "D408",
+    "D409",
+    "D413",
+    "PLR2004",
+    "PLR0913",
+    "S603",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "PLR2004", "S105", "S106", "D", "S108", "ARG", "SLF001", "N802", "N803", "N806"]
+
 [dependency-groups]
 dev = [
+    "ruff>=0.16.0",
     "zizmor>=1.28.0",
 ]

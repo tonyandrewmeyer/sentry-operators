@@ -1407,7 +1407,6 @@ class ConsumerBase(Object):
         return endpoints
 
 
-
 class LokiPushApiConsumer(ConsumerBase):
     """Loki Consumer class."""
 

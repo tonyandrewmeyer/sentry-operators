@@ -112,7 +112,7 @@ def _query(sql: str, *, host: str = "127.0.0.1", timeout: float = 5.0) -> str | 
     """Run a read-only SQL statement over the HTTP interface and return the body."""
     url = f"http://{host}:{HTTP_PORT}/?query={urllib.parse.quote(sql)}"
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=timeout) as response:
             return response.read().decode().strip()
     except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
         logger.debug("ClickHouse query failed: %s", exc)

@@ -12,6 +12,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   # Expose whether a Charmhub token is available so the release job can skip
   # cleanly when it is not (secrets cannot be referenced in a job-level `if`).
@@ -42,10 +45,12 @@ jobs:
             path: charms/sentry-k8s
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Upload ${{ matrix.charm.name }} to Charmhub
-        uses: canonical/charming-actions/upload-charm@2.7.0
+        uses: canonical/charming-actions/upload-charm@1753e0803f70445132e92acd45c905aba6473225 # 2.7.0
         with:
           credentials: ${{ secrets.CHARMHUB_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

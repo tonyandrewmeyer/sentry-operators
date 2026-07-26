@@ -14,6 +14,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   integration:
     name: Integration (${{ matrix.charm }})
@@ -31,10 +34,12 @@ jobs:
           - charms/sentry-k8s
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Set up Juju + microk8s
-        uses: charmed-kubernetes/actions-operator@main
+        uses: charmed-kubernetes/actions-operator@d8217ad61c15f746727a9d41563c13e9b9fe56e3 # main
         with:
           provider: microk8s
           channel: 1.32-strict/stable
@@ -42,12 +47,12 @@ jobs:
 
       - name: Pack charm
         id: pack
-        uses: canonical/craft-actions/charmcraft/pack@main
+        uses: canonical/craft-actions/charmcraft/pack@acd2f2e61c7563b38ba89390ca0e910fa7d2784f # v0.1.1
         with:
           path: ${{ matrix.charm }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
       - name: Install tox
         run: uv tool install tox --with tox-uv

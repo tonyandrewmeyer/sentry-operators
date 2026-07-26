@@ -45,3 +45,8 @@ ignore-words-list = "assertIn,master"
 include = ["src", "tests"]
 pythonVersion = "3.12"
 pythonPlatform = "Linux"
+
+[dependency-groups]
+dev = [
+    "zizmor>=1.28.0",
+]
